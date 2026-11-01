@@ -4,6 +4,7 @@
 
     <uses-feature android:name="android.software.leanback" android:required="false" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+    <uses-feature android:name="android.software.live_tv" android:required="false" />
 
     <!-- Necesario para listar las apps instaladas (Android 11+) -->
     <uses-permission

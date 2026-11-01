@@ -3,41 +3,31 @@ package com.mio.launchertv
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
-import android.content.pm.PackageManager
 import android.content.pm.ResolveInfo
 import android.database.Cursor
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.graphics.Rect
-import android.graphics.drawable.Drawable
 import android.media.tv.TvContract
-import android.net.Uri
-import android.os.Build
+import android.media.tv.TvInputInfo
+import android.media.tv.TvInputManager
+import android.media.tv.TvView
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.view.Gravity
 import android.provider.Settings
-import android.util.LruCache
+import android.view.Gravity
 import android.view.KeyEvent
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.ImageView
-import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.app.ActivityCompat
-import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import java.net.HttpURLConnection
-import java.net.URL
-import java.util.concurrent.Executors
 
 class MainActivity : AppCompatActivity() {
 
@@ -52,7 +42,7 @@ class MainActivity : AppCompatActivity() {
     private val spotify = listOf("com.spotify.tv.android")
     private val playStore = listOf("com.android.vending")
 
-    // App de TV en vivo (la que sintoniza los canales). Agrega aqui la de tu marca si hace falta.
+    // App de TV en vivo (se usa solo si la TV no se puede mostrar dentro del launcher).
     private val tvApps = listOf(
         "com.google.android.tv", "com.android.tv", "org.droidtv.channels",
         "com.sony.dtv.tvx", "com.tcl.tv", "com.hisense.tv", "com.xiaomi.mitv.tvplayer"
@@ -61,66 +51,59 @@ class MainActivity : AppCompatActivity() {
     // Orden inicial de las apps (despues puedes moverlas tu con "Mover").
     private val favoritePackages =
         netflix + prime + youtube + youtubeMusic + hbo + disney + spotify + playStore
-
     // =====================================
 
     private enum class Mode { HOME, APPS }
 
-    private class Program(
-        val title: String,
-        val imageUri: String?,
-        val intentUri: String?,
-        val pkg: String?,
-        val image: Drawable? = null,
-        val iconOnly: Boolean = false
-    )
-
-    private class Row(val title: String, val programs: List<Program>)
-
-    private class RawProgram(val channelId: Long, val program: Program)
-
-    private val epgPermission = "com.android.providers.tv.permission.READ_EPG_DATA"
-    private val requestEpg = 41
+    private class Chan(val inputId: String, val id: Long, val number: String, val name: String)
 
     private lateinit var prefs: SharedPreferences
+    private lateinit var tvView: TvView
+    private lateinit var menuBar: View
     private lateinit var appsRow: RecyclerView
     private lateinit var appName: TextView
-    private lateinit var homeContent: View
     private lateinit var panel: View
     private lateinit var panelTitle: TextView
     private lateinit var panelList: RecyclerView
-    private lateinit var rowsContainer: LinearLayout
+    private lateinit var channelOverlay: TextView
+
+    private val handler = Handler(Looper.getMainLooper())
+    private val hideMenuRunnable = Runnable { hideMenu() }
+    private val hideBannerRunnable = Runnable {
+        if (channelBuffer.isEmpty()) channelOverlay.visibility = View.GONE
+    }
+    private val commitChannel = Runnable { tuneChannel() }
 
     private var mode = Mode.HOME
-    private var channelBuffer = ""
-    private lateinit var channelOverlay: TextView
-    private val handler = Handler(Looper.getMainLooper())
-    private val commitChannel = Runnable { tuneChannel() }
-    private var selectedTab: View? = null
     private var homeAdapter: AppsAdapter? = null
     private var movingPkg: String? = null
-    private var cachedRows: List<Row>? = null
-    private var rowsLoadId = 0
-    private val io = Executors.newFixedThreadPool(3)
+    private var dialogOpen = false
+    private var resumed = false
 
-    private val imageCache = object : LruCache<String, Bitmap>(24 * 1024 * 1024) {
-        override fun sizeOf(key: String, value: Bitmap): Int = value.byteCount
-    }
+    // TV dentro del launcher
+    private var channels: List<Chan> = emptyList()
+    private var channelsLoaded = false
+    private var loadingChannels = false
+    private var channelIndex = -1
+    private var tvActive = false
+    private var embedFailed = false
+    private var warnedNoChannels = false
+    private var channelBuffer = ""
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
         prefs = getSharedPreferences("launcher", Context.MODE_PRIVATE)
 
+        tvView = findViewById(R.id.tvView)
+        menuBar = findViewById(R.id.menuBar)
         appsRow = findViewById(R.id.appsRow)
         appsRow.layoutManager =
             LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
         appName = findViewById(R.id.appName)
-        homeContent = findViewById(R.id.homeContent)
         panel = findViewById(R.id.panel)
         panelTitle = findViewById(R.id.panelTitle)
         panelList = findViewById(R.id.panelList)
-        rowsContainer = findViewById(R.id.rowsContainer)
         panelList.clipChildren = false
         panelList.addItemDecoration(object : RecyclerView.ItemDecoration() {
             override fun getItemOffsets(
@@ -130,7 +113,13 @@ class MainActivity : AppCompatActivity() {
             }
         })
 
-        // Cuadro que muestra el numero de canal mientras lo escribes
+        tvView.setCallback(object : TvView.TvInputCallback() {
+            override fun onConnectionFailed(inputId: String?) {
+                tvFailed()
+            }
+        })
+
+        // Cuadro que muestra el numero de canal (al escribirlo) y el canal actual
         channelOverlay = TextView(this).apply {
             textSize = 40f
             setTextColor(0xFFFFFFFF.toInt())
@@ -143,84 +132,364 @@ class MainActivity : AppCompatActivity() {
             FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
                 Gravity.TOP or Gravity.END
-            ).apply { setMargins(0, dp(70), dp(50), 0) }
+            ).apply { setMargins(0, dp(40), dp(50), 0) }
         )
 
-        // Barra superior
+        // Menu inferior
         click(R.id.search) { openAssistant() }
         click(R.id.iconNotifications) { openNotifications() }
         click(R.id.iconSettings) { startActivity(Intent(Settings.ACTION_SETTINGS)) }
         click(R.id.profile) { }
-
-        // Pestañas
-        selectTab(findViewById(R.id.tabHome))
-        click(R.id.tabHome) { showMode(Mode.HOME) }
-        click(R.id.tabShop) { openFirst(playStore) }
         click(R.id.tabApps) { showMode(Mode.APPS) }
     }
 
     override fun onResume() {
         super.onResume()
-        when (mode) {
-            Mode.HOME -> {
-                refreshHome()
-                showRows(cachedRows ?: emptyList())
-                loadRows()
-            }
-            Mode.APPS -> showApps()
+        resumed = true
+        if (mode == Mode.HOME) {
+            refreshHome()
+            showMenu(force = true)
+        } else {
+            showApps()
         }
+        startTv()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        resumed = false
+        handler.removeCallbacks(hideMenuRunnable)
+        // Suelta el sintonizador para que otras apps (Netflix, la app de TV...) lo puedan usar
+        tvView.reset()
     }
 
     @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
     override fun onBackPressed() {
-        // En un launcher, "atras" solo vuelve al inicio; nunca cierra la pantalla.
-        if (mode != Mode.HOME) showMode(Mode.HOME)
+        // En un launcher, "atras" nunca cierra la pantalla.
+        if (mode != Mode.HOME) {
+            showMode(Mode.HOME)
+        } else if (tvActive && menuBar.visibility == View.VISIBLE) {
+            hideMenu()
+        }
     }
 
-    // Mientras se mueve una app, las flechas y OK controlan el movimiento.
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        if (movingPkg == null) {
-            // Numeros del control: escribir canal (ej. 3 . 1)
-            val ch = keyChar(event.keyCode)
-            if (ch != null) {
-                if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) typeChannel(ch)
-                return true
-            }
-            // Con un canal escrito: OK lo sintoniza ya, ATRAS lo cancela
-            if (channelBuffer.isNotEmpty()) {
-                when (event.keyCode) {
-                    KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER,
-                    KeyEvent.KEYCODE_NUMPAD_ENTER -> {
-                        if (event.action == KeyEvent.ACTION_DOWN) {
-                            handler.removeCallbacks(commitChannel)
-                            tuneChannel()
-                        }
-                        return true
-                    }
-                    KeyEvent.KEYCODE_BACK -> {
-                        if (event.action == KeyEvent.ACTION_DOWN) cancelChannel()
-                        return true
-                    }
-                }
-            }
-        }
+        val down = event.action == KeyEvent.ACTION_DOWN
+        val first = down && event.repeatCount == 0
+
+        // Mientras se mueve una app, las flechas y OK controlan el movimiento.
         if (movingPkg != null && mode == Mode.HOME) {
             when (event.keyCode) {
                 KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> {
-                    if (event.action == KeyEvent.ACTION_DOWN) {
-                        moveCurrent(if (event.keyCode == KeyEvent.KEYCODE_DPAD_LEFT) -1 else 1)
-                    }
+                    if (down) moveCurrent(if (event.keyCode == KeyEvent.KEYCODE_DPAD_LEFT) -1 else 1)
                     return true
                 }
                 KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN -> return true
                 KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER,
                 KeyEvent.KEYCODE_NUMPAD_ENTER, KeyEvent.KEYCODE_BACK -> {
-                    if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) endMove()
+                    if (first) endMove()
+                    return true
+                }
+            }
+            return super.dispatchKeyEvent(event)
+        }
+
+        // Numeros del control: escribir canal (ej. 3 . 1)
+        val ch = keyChar(event.keyCode)
+        if (ch != null) {
+            if (first) typeChannel(ch)
+            return true
+        }
+
+        // Con un canal escrito: OK lo sintoniza ya, ATRAS lo cancela
+        if (channelBuffer.isNotEmpty()) {
+            when (event.keyCode) {
+                KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER,
+                KeyEvent.KEYCODE_NUMPAD_ENTER -> {
+                    if (first) {
+                        handler.removeCallbacks(commitChannel)
+                        tuneChannel()
+                    }
+                    return true
+                }
+                KeyEvent.KEYCODE_BACK -> {
+                    if (down) cancelChannel()
                     return true
                 }
             }
         }
+
+        // Canal +/- del control
+        if (event.keyCode == KeyEvent.KEYCODE_CHANNEL_UP ||
+            event.keyCode == KeyEvent.KEYCODE_CHANNEL_DOWN
+        ) {
+            if (first) stepChannel(if (event.keyCode == KeyEvent.KEYCODE_CHANNEL_UP) 1 else -1)
+            return true
+        }
+
+        if (mode == Mode.HOME) {
+            if (menuBar.visibility != View.VISIBLE) {
+                // Menu oculto: cualquier flecha / OK lo vuelve a mostrar
+                when (event.keyCode) {
+                    KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN,
+                    KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT,
+                    KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER,
+                    KeyEvent.KEYCODE_NUMPAD_ENTER, KeyEvent.KEYCODE_MENU -> {
+                        if (first) showMenu()
+                        return true
+                    }
+                }
+            } else if (down) {
+                scheduleHide()
+            }
+        }
         return super.dispatchKeyEvent(event)
+    }
+
+    // ---------- Menu inferior: mostrar / ocultar ----------
+
+    private fun showMenu(force: Boolean = false) {
+        if (mode != Mode.HOME) return
+        if (force || menuBar.visibility != View.VISIBLE) {
+            menuBar.visibility = View.VISIBLE
+            focusFirstApp()
+        }
+        scheduleHide()
+    }
+
+    private fun hideMenu() {
+        // Si no hay TV de fondo, el menu se queda siempre visible.
+        if (!tvActive || mode != Mode.HOME || movingPkg != null || dialogOpen) return
+        menuBar.visibility = View.INVISIBLE
+    }
+
+    private fun scheduleHide() {
+        handler.removeCallbacks(hideMenuRunnable)
+        handler.postDelayed(hideMenuRunnable, 8000)
+    }
+
+    private fun focusFirstApp() {
+        appsRow.post {
+            val first = appsRow.findViewHolderForAdapterPosition(0)?.itemView
+                ?: appsRow.getChildAt(0)
+            if (first != null) first.requestFocus() else appsRow.requestFocus()
+        }
+    }
+
+    // ---------- TV en vivo dentro del launcher ----------
+
+    private fun startTv() {
+        if (embedFailed) {
+            setTvOff()
+            return
+        }
+        if (channelsLoaded) {
+            resumeTv()
+        } else if (!loadingChannels) {
+            loadingChannels = true
+            Thread {
+                val list = try {
+                    readChannels()
+                } catch (e: Exception) {
+                    emptyList()
+                }
+                runOnUiThread {
+                    channels = list
+                    channelsLoaded = true
+                    loadingChannels = false
+                    resumeTv()
+                }
+            }.start()
+        }
+    }
+
+    private fun resumeTv() {
+        if (!resumed) return
+        if (channels.isEmpty()) {
+            setTvOff()
+            if (!warnedNoChannels) {
+                warnedNoChannels = true
+                Toast.makeText(
+                    this,
+                    "No puedo leer los canales de este TV (Android lo bloquea a otras apps). " +
+                        "Al escribir un canal se abrira la app de TV.",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+            return
+        }
+        val idx = if (channelIndex in channels.indices) channelIndex else savedChannelIndex()
+        tuneIndex(idx, announce = false)
+    }
+
+    private fun setTvOff() {
+        tvActive = false
+        tvView.reset()
+        tvView.visibility = View.GONE
+        if (mode == Mode.HOME) showMenu()
+    }
+
+    private fun tvFailed() {
+        embedFailed = true
+        Toast.makeText(
+            this,
+            "Android no deja mostrar la TV dentro del launcher; el canal se abrira en la app de TV.",
+            Toast.LENGTH_LONG
+        ).show()
+        setTvOff()
+    }
+
+    private fun tuneIndex(index: Int, announce: Boolean) {
+        val chan = channels.getOrNull(index) ?: return
+        channelIndex = index
+        try {
+            tvView.visibility = View.VISIBLE
+            tvView.setStreamVolume(1f)
+            tvView.tune(chan.inputId, TvContract.buildChannelUri(chan.id))
+            tvActive = true
+        } catch (e: Exception) {
+            tvFailed()
+            return
+        }
+        prefs.edit().putString("lastChannel", "${chan.inputId}|${chan.id}").apply()
+        if (announce) showBanner("${chan.number}  ${chan.name}")
+    }
+
+    private fun savedChannelIndex(): Int {
+        val saved = prefs.getString("lastChannel", null) ?: return 0
+        val i = channels.indexOfFirst { "${it.inputId}|${it.id}" == saved }
+        return if (i >= 0) i else 0
+    }
+
+    private fun stepChannel(delta: Int) {
+        if (!tvActive || channels.isEmpty()) return
+        val next = (channelIndex + delta + channels.size) % channels.size
+        tuneIndex(next, announce = true)
+    }
+
+    private fun showBanner(text: String) {
+        channelOverlay.text = text
+        channelOverlay.visibility = View.VISIBLE
+        handler.removeCallbacks(hideBannerRunnable)
+        handler.postDelayed(hideBannerRunnable, 3000)
+    }
+
+    // Lee los canales de los sintonizadores del TV (antena / cable).
+    private fun readChannels(): List<Chan> {
+        val manager = getSystemService(Context.TV_INPUT_SERVICE) as TvInputManager
+        val out = mutableListOf<Chan>()
+        for (input in manager.tvInputList) {
+            if (input.type != TvInputInfo.TYPE_TUNER) continue
+            try {
+                contentResolver.query(
+                    TvContract.buildChannelsUriForInput(input.id),
+                    arrayOf("_id", "display_number", "display_name"), null, null, null
+                )?.use { c ->
+                    while (c.moveToNext()) {
+                        val number = c.str("display_number")?.trim()?.replace('-', '.') ?: continue
+                        out.add(Chan(input.id, c.getLong(0), number, c.str("display_name") ?: ""))
+                    }
+                }
+            } catch (e: Exception) {
+                // este sintonizador no deja leer sus canales
+            }
+        }
+        return out.sortedWith(
+            compareBy<Chan>({ numPart(it.number, 0) }, { numPart(it.number, 1) })
+        )
+    }
+
+    private fun numPart(number: String, i: Int): Int =
+        number.split('.').getOrNull(i)?.toIntOrNull() ?: 0
+
+    // ---------- Canales por numero ----------
+
+    private fun keyChar(code: Int): Char? = when (code) {
+        in KeyEvent.KEYCODE_0..KeyEvent.KEYCODE_9 -> '0' + (code - KeyEvent.KEYCODE_0)
+        in KeyEvent.KEYCODE_NUMPAD_0..KeyEvent.KEYCODE_NUMPAD_9 ->
+            '0' + (code - KeyEvent.KEYCODE_NUMPAD_0)
+        KeyEvent.KEYCODE_PERIOD, KeyEvent.KEYCODE_NUMPAD_DOT, KeyEvent.KEYCODE_MINUS,
+        KeyEvent.KEYCODE_NUMPAD_SUBTRACT -> '.'
+        else -> null
+    }
+
+    private fun typeChannel(ch: Char) {
+        if (ch == '.' && (channelBuffer.isEmpty() || channelBuffer.contains('.'))) return
+        if (channelBuffer.length >= 7) return
+        channelBuffer += ch
+        channelOverlay.text = channelBuffer
+        channelOverlay.visibility = View.VISIBLE
+        handler.removeCallbacks(hideBannerRunnable)
+        // Si no escribes nada mas en 2 segundos, se sintoniza solo
+        handler.removeCallbacks(commitChannel)
+        handler.postDelayed(commitChannel, 2000)
+    }
+
+    private fun cancelChannel() {
+        handler.removeCallbacks(commitChannel)
+        channelBuffer = ""
+        channelOverlay.visibility = View.GONE
+    }
+
+    private fun tuneChannel() {
+        val typed = channelBuffer.trimEnd('.')
+        cancelChannel()
+        if (typed.isEmpty()) return
+        if (!channelsLoaded) {
+            Toast.makeText(this, "Cargando canales, intenta de nuevo", Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (channels.isEmpty()) {
+            openTvApp(typed)
+            return
+        }
+        val idx = findChannelIndex(typed)
+        when {
+            idx < 0 -> Toast.makeText(this, "El canal $typed no existe", Toast.LENGTH_SHORT).show()
+            embedFailed -> openChannel(channels[idx].id, typed)
+            else -> {
+                if (mode != Mode.HOME) showMode(Mode.HOME)
+                tuneIndex(idx, announce = true)
+            }
+        }
+    }
+
+    // Acepta "31" como "3.1" y "3-1" como "3.1".
+    private fun findChannelIndex(typed: String): Int {
+        val candidates = linkedSetOf(typed)
+        if (!typed.contains('.')) {
+            for (i in 1 until typed.length) {
+                candidates.add(typed.substring(0, i) + "." + typed.substring(i))
+            }
+        }
+        for (candidate in candidates) {
+            val i = channels.indexOfFirst { it.number == candidate }
+            if (i >= 0) return i
+        }
+        return -1
+    }
+
+    private fun openChannel(id: Long, typed: String) {
+        try {
+            startActivity(
+                Intent(Intent.ACTION_VIEW, TvContract.buildChannelUri(id))
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
+            Toast.makeText(this, "Canal $typed", Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            openTvApp(typed)
+        }
+    }
+
+    // Respaldo: abre la app de TV del propio aparato.
+    private fun openTvApp(typed: String) {
+        val pkg = installed(tvApps)
+        if (pkg != null) {
+            Toast.makeText(this, "Abriendo TV (canal $typed)", Toast.LENGTH_LONG).show()
+            openPackage(pkg)
+        } else {
+            Toast.makeText(this, "No encontre la app de TV", Toast.LENGTH_LONG).show()
+        }
     }
 
     // ---------- Asistente de Google ----------
@@ -253,120 +522,21 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // ---------- Canales por numero ----------
-
-    private fun keyChar(code: Int): Char? = when (code) {
-        in KeyEvent.KEYCODE_0..KeyEvent.KEYCODE_9 -> '0' + (code - KeyEvent.KEYCODE_0)
-        in KeyEvent.KEYCODE_NUMPAD_0..KeyEvent.KEYCODE_NUMPAD_9 ->
-            '0' + (code - KeyEvent.KEYCODE_NUMPAD_0)
-        KeyEvent.KEYCODE_PERIOD, KeyEvent.KEYCODE_NUMPAD_DOT, KeyEvent.KEYCODE_MINUS,
-        KeyEvent.KEYCODE_NUMPAD_SUBTRACT -> '.'
-        else -> null
-    }
-
-    private fun typeChannel(ch: Char) {
-        if (ch == '.' && (channelBuffer.isEmpty() || channelBuffer.contains('.'))) return
-        if (channelBuffer.length >= 7) return
-        channelBuffer += ch
-        channelOverlay.text = channelBuffer
-        channelOverlay.visibility = View.VISIBLE
-        // Si no escribes nada mas en 2 segundos, se sintoniza solo
-        handler.removeCallbacks(commitChannel)
-        handler.postDelayed(commitChannel, 2000)
-    }
-
-    private fun cancelChannel() {
-        handler.removeCallbacks(commitChannel)
-        channelBuffer = ""
-        channelOverlay.visibility = View.GONE
-    }
-
-    private fun tuneChannel() {
-        val typed = channelBuffer.trimEnd('.')
-        cancelChannel()
-        if (typed.isEmpty()) return
-        Thread {
-            val id = try {
-                findChannelId(typed)
-            } catch (e: Exception) {
-                null
-            }
-            runOnUiThread { if (id != null) openChannel(id, typed) else openTvApp(typed) }
-        }.start()
-    }
-
-    // Busca el canal en la lista del TV. Acepta "31" como "3.1" y "3-1" como "3.1".
-    private fun findChannelId(typed: String): Long? {
-        val candidates = linkedSetOf(typed)
-        if (!typed.contains('.')) {
-            for (i in 1 until typed.length) {
-                candidates.add(typed.substring(0, i) + "." + typed.substring(i))
-            }
-        }
-        val numbers = mutableListOf<Pair<Long, String>>()
-        contentResolver.query(
-            TvContract.Channels.CONTENT_URI,
-            arrayOf("_id", "display_number", "type"), null, null, null
-        )?.use { c ->
-            while (c.moveToNext()) {
-                if (c.str("type") == "TYPE_PREVIEW") continue
-                val number = c.str("display_number")?.trim()?.replace('-', '.') ?: continue
-                numbers.add(c.getLong(0) to number)
-            }
-        }
-        for (candidate in candidates) {
-            numbers.firstOrNull { it.second == candidate }?.let { return it.first }
-        }
-        return null
-    }
-
-    private fun openChannel(id: Long, typed: String) {
-        try {
-            startActivity(
-                Intent(Intent.ACTION_VIEW, TvContract.buildChannelUri(id))
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            )
-            Toast.makeText(this, "Canal $typed", Toast.LENGTH_SHORT).show()
-        } catch (e: Exception) {
-            openTvApp(typed)
-        }
-    }
-
-    // Respaldo: si no se pudo sintonizar el canal, al menos abre la app de TV.
-    private fun openTvApp(typed: String) {
-        val pkg = installed(tvApps)
-        if (pkg != null) {
-            Toast.makeText(this, "No pude sintonizar el canal $typed; abriendo TV", Toast.LENGTH_LONG).show()
-            openPackage(pkg)
-        } else {
-            Toast.makeText(this, "No encontre el canal $typed ni la app de TV", Toast.LENGTH_LONG).show()
-        }
-    }
-
     // ---------- Pantallas ----------
 
     private fun showMode(newMode: Mode) {
         mode = newMode
         movingPkg = null
-        val home = newMode == Mode.HOME
-        homeContent.visibility = if (home) View.VISIBLE else View.GONE
-        panel.visibility = if (home) View.GONE else View.VISIBLE
-        when (newMode) {
-            Mode.HOME -> {
-                selectTab(findViewById(R.id.tabHome))
-                refreshHome()
-            }
-            Mode.APPS -> {
-                selectTab(findViewById(R.id.tabApps))
-                showApps()
-            }
+        if (newMode == Mode.HOME) {
+            panel.visibility = View.GONE
+            refreshHome()
+            showMenu(force = true)
+        } else {
+            handler.removeCallbacks(hideMenuRunnable)
+            menuBar.visibility = View.GONE
+            panel.visibility = View.VISIBLE
+            showApps()
         }
-    }
-
-    private fun selectTab(tab: View) {
-        selectedTab?.isSelected = false
-        tab.isSelected = true
-        selectedTab = tab
     }
 
     private fun refreshHome() {
@@ -383,204 +553,9 @@ class MainActivity : AppCompatActivity() {
         panelList.adapter = AppsAdapter(allApps())
     }
 
-    // ---------- Recomendados (YouTube y otras apps) ----------
-
-    private fun showRows(rows: List<Row>) {
-        rowsContainer.removeAllViews()
-        for (row in rows) {
-            val title = TextView(this).apply {
-                text = row.title
-                setTextColor(0xFFFFFFFF.toInt())
-                textSize = 12f
-                setPadding(dp(4), dp(10), 0, 0)
-            }
-            val list = RecyclerView(this).apply {
-                layoutManager =
-                    LinearLayoutManager(context, LinearLayoutManager.HORIZONTAL, false)
-                clipToPadding = false
-                clipChildren = false
-                setPadding(dp(4), dp(6), dp(4), dp(6))
-                adapter = ProgramsAdapter(row.programs)
-            }
-            rowsContainer.addView(
-                title,
-                LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
-                )
-            )
-            rowsContainer.addView(
-                list,
-                LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(128))
-            )
-        }
-    }
-
-    private fun loadRows() {
-        val id = ++rowsLoadId
-        val granted = ContextCompat.checkSelfPermission(this, epgPermission) ==
-            PackageManager.PERMISSION_GRANTED
-        if (!granted && !prefs.getBoolean("epgAsked", false)) {
-            prefs.edit().putBoolean("epgAsked", true).apply()
-            ActivityCompat.requestPermissions(this, arrayOf(epgPermission), requestEpg)
-            return
-        }
-        Thread {
-            val rows = try {
-                queryRows()
-            } catch (e: Exception) {
-                emptyList()
-            }
-            runOnUiThread {
-                if (id == rowsLoadId && mode == Mode.HOME && rows.isNotEmpty()) {
-                    cachedRows = rows
-                    showRows(rows)
-                }
-            }
-        }.start()
-    }
-
-    override fun onRequestPermissionsResult(
-        requestCode: Int, permissions: Array<out String>, grantResults: IntArray
-    ) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        // Se intenta leer igual: si Android lo bloquea, se queda la fila de respaldo.
-        if (requestCode == requestEpg && mode == Mode.HOME) loadRows()
-    }
-
     private fun Cursor.str(column: String): String? {
         val i = getColumnIndex(column)
         return if (i >= 0 && !isNull(i)) getString(i) else null
-    }
-
-    private fun readPrograms(uri: Uri, sort: String?): List<RawProgram> {
-        val out = mutableListOf<RawProgram>()
-        contentResolver.query(uri, null, null, null, sort)?.use { c ->
-            val iChannel = c.getColumnIndex("channel_id")
-            while (c.moveToNext() && out.size < 300) {
-                val image = c.str("thumbnail_uri") ?: c.str("poster_art_uri")
-                val program = Program(
-                    title = c.str("title") ?: "",
-                    imageUri = image,
-                    intentUri = c.str("intent_uri"),
-                    pkg = c.str("package_name")
-                )
-                val channel = if (iChannel >= 0 && !c.isNull(iChannel)) c.getLong(iChannel) else -1L
-                out.add(RawProgram(channel, program))
-            }
-        }
-        return out
-    }
-
-    private fun appLabel(pkg: String): String = try {
-        packageManager.getApplicationInfo(pkg, 0).loadLabel(packageManager).toString()
-    } catch (e: Exception) {
-        pkg
-    }
-
-    // Lee los "canales de inicio" que publican YouTube y otras apps (Android 8+).
-    private fun queryRows(): List<Row> {
-        if (Build.VERSION.SDK_INT < 26) return emptyList()
-        val rows = mutableListOf<Row>()
-
-        // Seguir viendo
-        try {
-            val watchNext = readPrograms(TvContract.WatchNextPrograms.CONTENT_URI, null)
-                .map { it.program }
-                .take(20)
-            if (watchNext.isNotEmpty()) rows.add(Row("Continuar viendo", watchNext))
-        } catch (e: Exception) {
-            // no disponible
-        }
-
-        // Filas de cada app (YouTube: Recomendaciones, Tendencias, etc.)
-        val channels = linkedMapOf<Long, String>()
-        contentResolver.query(TvContract.Channels.CONTENT_URI, null, null, null, null)?.use { c ->
-            val iId = c.getColumnIndex("_id")
-            val iBrowsable = c.getColumnIndex("browsable")
-            while (c.moveToNext()) {
-                if (c.str("type") != "TYPE_PREVIEW") continue
-                if (iBrowsable >= 0 && !c.isNull(iBrowsable) && c.getInt(iBrowsable) == 0) continue
-                val pkg = c.str("package_name") ?: continue
-                if (pkg == packageName) continue
-                val name = c.str("display_name") ?: ""
-                val label = appLabel(pkg)
-                channels[c.getLong(iId)] = if (name.isBlank()) label else "$label: $name"
-            }
-        }
-        if (channels.isNotEmpty()) {
-            val programs = try {
-                readPrograms(TvContract.PreviewPrograms.CONTENT_URI, "weight DESC")
-            } catch (e: Exception) {
-                readPrograms(TvContract.PreviewPrograms.CONTENT_URI, null)
-            }
-            val grouped = programs.groupBy({ it.channelId }, { it.program })
-            for ((id, title) in channels) {
-                val list = grouped[id]?.take(20) ?: continue
-                if (list.isNotEmpty()) rows.add(Row(title, list))
-                if (rows.size >= 8) break
-            }
-        }
-        return rows
-    }
-
-    private fun openProgram(p: Program) {
-        val uri = p.intentUri
-        if (uri != null) {
-            try {
-                startActivity(
-                    Intent.parseUri(uri, Intent.URI_INTENT_SCHEME)
-                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                )
-                return
-            } catch (e: Exception) {
-                // intenta abrir la app
-            }
-        }
-        p.pkg?.let { openPackage(it) }
-    }
-
-    private fun loadImage(target: ImageView, uriStr: String) {
-        target.tag = uriStr
-        val cached = imageCache.get(uriStr)
-        if (cached != null) {
-            target.setImageBitmap(cached)
-            return
-        }
-        io.execute {
-            val bmp = decodeImage(uriStr)
-            if (bmp != null) {
-                imageCache.put(uriStr, bmp)
-                target.post { if (target.tag == uriStr) target.setImageBitmap(bmp) }
-            }
-        }
-    }
-
-    private fun decodeImage(uriStr: String): Bitmap? = try {
-        val uri = Uri.parse(uriStr)
-        val bytes: ByteArray? = if (uri.scheme == "http" || uri.scheme == "https") {
-            val conn = URL(uriStr).openConnection() as HttpURLConnection
-            conn.connectTimeout = 8000
-            conn.readTimeout = 8000
-            try {
-                conn.inputStream.use { it.readBytes() }
-            } finally {
-                conn.disconnect()
-            }
-        } else {
-            contentResolver.openInputStream(uri)?.use { it.readBytes() }
-        }
-        if (bytes == null) {
-            null
-        } else {
-            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-            BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
-            var sample = 1
-            while (bounds.outWidth / (sample * 2) >= 480) sample *= 2
-            val options = BitmapFactory.Options().apply { inSampleSize = sample }
-            BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
-        }
-    } catch (e: Exception) {
-        null
     }
 
     // ---------- Apps ----------
@@ -635,8 +610,10 @@ class MainActivity : AppCompatActivity() {
         options.add(if (isHidden) "Mostrar en inicio" else "Quitar de inicio")
         options.add("Cancelar")
 
+        dialogOpen = true
         AlertDialog.Builder(this)
             .setTitle(info.loadLabel(packageManager).toString())
+            .setOnDismissListener { dialogOpen = false }
             .setItems(options.toTypedArray()) { _, which ->
                 when (options[which]) {
                     "Mover" -> startMove(info)
@@ -694,6 +671,7 @@ class MainActivity : AppCompatActivity() {
         movingPkg = null
         appName.text = ""
         Toast.makeText(this, "Orden guardado", Toast.LENGTH_SHORT).show()
+        scheduleHide()
     }
 
     // ---------- Utilidades ----------
@@ -720,14 +698,10 @@ class MainActivity : AppCompatActivity() {
         launchIntent(pkg)?.let { startActivity(it) }
     }
 
-    private fun openFirst(candidates: List<String>) {
-        installed(candidates)?.let { openPackage(it) }
-    }
-
     private fun installed(candidates: List<String>): String? =
         candidates.firstOrNull { launchIntent(it) != null }
 
-    // ---------- Adaptadores ----------
+    // ---------- Adaptador de apps ----------
 
     private inner class AppsAdapter(initial: List<ResolveInfo>) :
         RecyclerView.Adapter<AppsAdapter.VH>() {
@@ -782,50 +756,6 @@ class MainActivity : AppCompatActivity() {
                     appName.text = info.loadLabel(pm)
                     if (v.parent === appsRow) alignLeft(v)
                 }
-            }
-        }
-
-        override fun getItemCount() = items.size
-    }
-
-    private inner class ProgramsAdapter(private val items: List<Program>) :
-        RecyclerView.Adapter<ProgramsAdapter.VH>() {
-
-        inner class VH(v: View) : RecyclerView.ViewHolder(v) {
-            val image: ImageView = v.findViewById(R.id.cardImage)
-        }
-
-        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) =
-            VH(LayoutInflater.from(parent.context).inflate(R.layout.item_card, parent, false))
-
-        override fun onBindViewHolder(holder: VH, position: Int) {
-            val p = items[position]
-            val img = holder.image
-            img.tag = null
-            val drawable = p.image
-            val uri = p.imageUri
-            if (drawable != null) {
-                if (p.iconOnly) {
-                    val pad = dp(24)
-                    img.setPadding(pad, pad, pad, pad)
-                    img.scaleType = ImageView.ScaleType.FIT_CENTER
-                } else {
-                    img.setPadding(0, 0, 0, 0)
-                    img.scaleType = ImageView.ScaleType.CENTER_CROP
-                }
-                img.setImageDrawable(drawable)
-            } else {
-                img.setPadding(0, 0, 0, 0)
-                img.scaleType = ImageView.ScaleType.CENTER_CROP
-                img.setImageDrawable(null)
-                if (uri != null) loadImage(img, uri)
-            }
-
-            holder.itemView.setOnClickListener { openProgram(p) }
-            holder.itemView.setOnFocusChangeListener { v, hasFocus ->
-                val s = if (hasFocus) 1.06f else 1f
-                v.animate().scaleX(s).scaleY(s).setDuration(120).start()
-                if (hasFocus) alignLeft(v)
             }
         }
 
