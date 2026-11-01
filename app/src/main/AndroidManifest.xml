@@ -10,8 +10,9 @@
         android:name="android.permission.QUERY_ALL_PACKAGES"
         tools:ignore="QueryAllPackagesPermission" />
 
-    <!-- Para intentar leer la lista de canales y la guia del TV -->
+    <!-- Para intentar leer los recomendados de YouTube y otras apps -->
     <uses-permission android:name="com.android.providers.tv.permission.READ_EPG_DATA" />
+    <uses-permission android:name="android.permission.INTERNET" />
 
     <application
         android:label="@string/app_name"
