@@ -1,18 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Icono del Asistente de Google: cuatro puntos de colores -->
+<!-- Logo del Asistente de Google (proporciones tomadas del PNG original) -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp" android:height="24dp"
-    android:viewportWidth="24" android:viewportHeight="24">
+    android:viewportWidth="720" android:viewportHeight="720">
     <path
         android:fillColor="#4285F4"
-        android:pathData="M3.9,9.5a3.6,3.6 0,1 0,7.2,0a3.6,3.6 0,1 0,-7.2,0z" />
+        android:pathData="M5.3,232.3a192.8,192.8 0,1 0,385.6,0a192.8,192.8 0,1 0,-385.6,0z" />
     <path
         android:fillColor="#EA4335"
-        android:pathData="M15.1,7.0a2.4,2.4 0,1 0,4.8,0a2.4,2.4 0,1 0,-4.8,0z" />
+        android:pathData="M424.7,329.2a96.2,96.2 0,1 0,192.4,0a96.2,96.2 0,1 0,-192.4,0z" />
     <path
         android:fillColor="#FBBC04"
-        android:pathData="M6.1,18.0a2.4,2.4 0,1 0,4.8,0a2.4,2.4 0,1 0,-4.8,0z" />
+        android:pathData="M408.4,571.3a112.6,112.6 0,1 0,225.2,0a112.6,112.6 0,1 0,-225.2,0z" />
     <path
         android:fillColor="#34A853"
-        android:pathData="M13.5,16.5a3.0,3.0 0,1 0,6.0,0a3.0,3.0 0,1 0,-6.0,0z" />
+        android:pathData="M618.3,216.2a47.9,47.9 0,1 0,95.8,0a47.9,47.9 0,1 0,-95.8,0z" />
 </vector>

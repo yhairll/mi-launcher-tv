@@ -14,12 +14,16 @@ import android.media.tv.TvContract
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.view.Gravity
 import android.provider.Settings
 import android.util.LruCache
 import android.view.KeyEvent
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -47,6 +51,12 @@ class MainActivity : AppCompatActivity() {
     private val youtubeMusic = listOf("com.google.android.youtube.tvmusic")
     private val spotify = listOf("com.spotify.tv.android")
     private val playStore = listOf("com.android.vending")
+
+    // App de TV en vivo (la que sintoniza los canales). Agrega aqui la de tu marca si hace falta.
+    private val tvApps = listOf(
+        "com.google.android.tv", "com.android.tv", "org.droidtv.channels",
+        "com.sony.dtv.tvx", "com.tcl.tv", "com.hisense.tv", "com.xiaomi.mitv.tvplayer"
+    )
 
     // Orden inicial de las apps (despues puedes moverlas tu con "Mover").
     private val favoritePackages =
@@ -82,6 +92,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var rowsContainer: LinearLayout
 
     private var mode = Mode.HOME
+    private var channelBuffer = ""
+    private lateinit var channelOverlay: TextView
+    private val handler = Handler(Looper.getMainLooper())
+    private val commitChannel = Runnable { tuneChannel() }
     private var selectedTab: View? = null
     private var homeAdapter: AppsAdapter? = null
     private var movingPkg: String? = null
@@ -116,6 +130,22 @@ class MainActivity : AppCompatActivity() {
             }
         })
 
+        // Cuadro que muestra el numero de canal mientras lo escribes
+        channelOverlay = TextView(this).apply {
+            textSize = 40f
+            setTextColor(0xFFFFFFFF.toInt())
+            setBackgroundResource(R.drawable.scrim_pill)
+            setPadding(dp(24), dp(10), dp(24), dp(10))
+            visibility = View.GONE
+        }
+        addContentView(
+            channelOverlay,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.TOP or Gravity.END
+            ).apply { setMargins(0, dp(70), dp(50), 0) }
+        )
+
         // Barra superior
         click(R.id.search) { openAssistant() }
         click(R.id.iconNotifications) { openNotifications() }
@@ -149,6 +179,31 @@ class MainActivity : AppCompatActivity() {
 
     // Mientras se mueve una app, las flechas y OK controlan el movimiento.
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (movingPkg == null) {
+            // Numeros del control: escribir canal (ej. 3 . 1)
+            val ch = keyChar(event.keyCode)
+            if (ch != null) {
+                if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) typeChannel(ch)
+                return true
+            }
+            // Con un canal escrito: OK lo sintoniza ya, ATRAS lo cancela
+            if (channelBuffer.isNotEmpty()) {
+                when (event.keyCode) {
+                    KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER,
+                    KeyEvent.KEYCODE_NUMPAD_ENTER -> {
+                        if (event.action == KeyEvent.ACTION_DOWN) {
+                            handler.removeCallbacks(commitChannel)
+                            tuneChannel()
+                        }
+                        return true
+                    }
+                    KeyEvent.KEYCODE_BACK -> {
+                        if (event.action == KeyEvent.ACTION_DOWN) cancelChannel()
+                        return true
+                    }
+                }
+            }
+        }
         if (movingPkg != null && mode == Mode.HOME) {
             when (event.keyCode) {
                 KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> {
@@ -195,6 +250,96 @@ class MainActivity : AppCompatActivity() {
         } catch (e: Exception) {
             Toast.makeText(this, "Este TV no tiene panel de notificaciones", Toast.LENGTH_SHORT)
                 .show()
+        }
+    }
+
+    // ---------- Canales por numero ----------
+
+    private fun keyChar(code: Int): Char? = when (code) {
+        in KeyEvent.KEYCODE_0..KeyEvent.KEYCODE_9 -> '0' + (code - KeyEvent.KEYCODE_0)
+        in KeyEvent.KEYCODE_NUMPAD_0..KeyEvent.KEYCODE_NUMPAD_9 ->
+            '0' + (code - KeyEvent.KEYCODE_NUMPAD_0)
+        KeyEvent.KEYCODE_PERIOD, KeyEvent.KEYCODE_NUMPAD_DOT, KeyEvent.KEYCODE_MINUS,
+        KeyEvent.KEYCODE_NUMPAD_SUBTRACT -> '.'
+        else -> null
+    }
+
+    private fun typeChannel(ch: Char) {
+        if (ch == '.' && (channelBuffer.isEmpty() || channelBuffer.contains('.'))) return
+        if (channelBuffer.length >= 7) return
+        channelBuffer += ch
+        channelOverlay.text = channelBuffer
+        channelOverlay.visibility = View.VISIBLE
+        // Si no escribes nada mas en 2 segundos, se sintoniza solo
+        handler.removeCallbacks(commitChannel)
+        handler.postDelayed(commitChannel, 2000)
+    }
+
+    private fun cancelChannel() {
+        handler.removeCallbacks(commitChannel)
+        channelBuffer = ""
+        channelOverlay.visibility = View.GONE
+    }
+
+    private fun tuneChannel() {
+        val typed = channelBuffer.trimEnd('.')
+        cancelChannel()
+        if (typed.isEmpty()) return
+        Thread {
+            val id = try {
+                findChannelId(typed)
+            } catch (e: Exception) {
+                null
+            }
+            runOnUiThread { if (id != null) openChannel(id, typed) else openTvApp(typed) }
+        }.start()
+    }
+
+    // Busca el canal en la lista del TV. Acepta "31" como "3.1" y "3-1" como "3.1".
+    private fun findChannelId(typed: String): Long? {
+        val candidates = linkedSetOf(typed)
+        if (!typed.contains('.')) {
+            for (i in 1 until typed.length) {
+                candidates.add(typed.substring(0, i) + "." + typed.substring(i))
+            }
+        }
+        val numbers = mutableListOf<Pair<Long, String>>()
+        contentResolver.query(
+            TvContract.Channels.CONTENT_URI,
+            arrayOf("_id", "display_number", "type"), null, null, null
+        )?.use { c ->
+            while (c.moveToNext()) {
+                if (c.str("type") == "TYPE_PREVIEW") continue
+                val number = c.str("display_number")?.trim()?.replace('-', '.') ?: continue
+                numbers.add(c.getLong(0) to number)
+            }
+        }
+        for (candidate in candidates) {
+            numbers.firstOrNull { it.second == candidate }?.let { return it.first }
+        }
+        return null
+    }
+
+    private fun openChannel(id: Long, typed: String) {
+        try {
+            startActivity(
+                Intent(Intent.ACTION_VIEW, TvContract.buildChannelUri(id))
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
+            Toast.makeText(this, "Canal $typed", Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            openTvApp(typed)
+        }
+    }
+
+    // Respaldo: si no se pudo sintonizar el canal, al menos abre la app de TV.
+    private fun openTvApp(typed: String) {
+        val pkg = installed(tvApps)
+        if (pkg != null) {
+            Toast.makeText(this, "No pude sintonizar el canal $typed; abriendo TV", Toast.LENGTH_LONG).show()
+            openPackage(pkg)
+        } else {
+            Toast.makeText(this, "No encontre el canal $typed ni la app de TV", Toast.LENGTH_LONG).show()
         }
     }
 
