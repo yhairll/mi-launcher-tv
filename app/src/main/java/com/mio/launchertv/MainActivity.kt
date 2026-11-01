@@ -7,6 +7,8 @@ import android.content.pm.ApplicationInfo
 import android.content.pm.ResolveInfo
 import android.net.Uri
 import android.graphics.Rect
+import android.media.tv.TvContract
+import android.media.tv.TvInputManager
 import android.os.Bundle
 import android.provider.Settings
 import android.view.KeyEvent
@@ -36,6 +38,12 @@ class MainActivity : AppCompatActivity() {
     private val spotify = listOf("com.spotify.tv.android")
     private val playStore = listOf("com.android.vending")
 
+    // App de TV en vivo (para el boton de TV y de entradas del control).
+    private val tvApps = listOf(
+        "com.google.android.tv", "com.android.tv", "org.droidtv.channels",
+        "com.sony.dtv.tvx", "com.tcl.tv", "com.hisense.tv", "com.xiaomi.mitv.tvplayer"
+    )
+
     // Estas salen primero; el resto va despues, en orden alfabetico.
     // Despues puedes moverlas tu con "Mover".
     private val favoritePackages =
@@ -60,6 +68,7 @@ class MainActivity : AppCompatActivity() {
     private var rowStart = 0        // primera app visible de la fila de inicio
     private var rowVisible = 6      // cuantas apps COMPLETAS caben en la fila
     private var rowFitted = false
+    private var consumedKey = -1
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -128,7 +137,112 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
+
+        // Botones especiales del control (ajustes, entradas, TV, apps...)
+        val code = event.keyCode
+        if (event.action == KeyEvent.ACTION_UP && code == consumedKey) {
+            consumedKey = -1
+            return true
+        }
+        if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0 &&
+            handleRemoteKey(code)
+        ) {
+            consumedKey = code
+            return true
+        }
         return super.dispatchKeyEvent(event)
+    }
+
+    // ---------- Botones especiales del control ----------
+
+    private fun handleRemoteKey(code: Int): Boolean {
+        when (code) {
+            KeyEvent.KEYCODE_SETTINGS -> {
+                try {
+                    startActivity(Intent(Settings.ACTION_SETTINGS))
+                } catch (e: Exception) {
+                    Toast.makeText(this, "No pude abrir los ajustes", Toast.LENGTH_SHORT).show()
+                }
+            }
+            KeyEvent.KEYCODE_TV_INPUT -> showInputs()
+            KeyEvent.KEYCODE_TV -> openTvApp()
+            284 -> showMode(Mode.APPS) // boton de "todas las apps"
+            else -> {
+                // Boton que el launcher aun no conoce: muestra su codigo para poder asignarlo.
+                if (!isCommonKey(code)) {
+                    Toast.makeText(
+                        this,
+                        "Boton sin funcion: ${KeyEvent.keyCodeToString(code)} (codigo $code)",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+                return false
+            }
+        }
+        return true
+    }
+
+    // Teclas normales que no hace falta avisar (navegacion, volumen, numeros, multimedia...).
+    private fun isCommonKey(code: Int): Boolean =
+        code in 7..16 || code in 144..153 ||
+            code in setOf(
+                3, 4, 19, 20, 21, 22, 23, 24, 25, 26, 56, 62, 66, 67, 69, 82, 84, 85, 86, 87,
+                88, 89, 90, 111, 126, 127, 130, 164, 166, 167, 187, 219, 223, 224, 231
+            )
+
+    private fun openTvApp() {
+        val pkg = installed(tvApps)
+        if (pkg != null) {
+            openPackage(pkg)
+            return
+        }
+        try {
+            startActivity(
+                Intent(Intent.ACTION_VIEW, TvContract.Channels.CONTENT_URI)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
+        } catch (e: Exception) {
+            Toast.makeText(this, "No encontre la app de TV", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    // Boton de entradas: lista HDMI / AV / TV y abre la que elijas.
+    private fun showInputs() {
+        val ids = mutableListOf<String?>()
+        val labels = mutableListOf<String>()
+        ids.add(null)
+        labels.add("TV en vivo")
+        try {
+            val manager = getSystemService(Context.TV_INPUT_SERVICE) as TvInputManager
+            for (input in manager.tvInputList) {
+                if (!input.isPassthroughInput()) continue
+                val label = (input.loadCustomLabel(this) ?: input.loadLabel(this))?.toString()
+                if (label.isNullOrBlank()) continue
+                ids.add(input.id)
+                labels.add(label)
+            }
+        } catch (e: Exception) {
+            // si no se pueden leer las entradas, queda solo "TV en vivo"
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle("Entradas")
+            .setItems(labels.toTypedArray()) { _, which ->
+                val id = ids[which]
+                if (id == null) {
+                    openTvApp()
+                } else {
+                    try {
+                        startActivity(
+                            Intent(Intent.ACTION_VIEW, TvContract.buildChannelUriForPassthroughInput(id))
+                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        )
+                    } catch (e: Exception) {
+                        Toast.makeText(this, "No pude abrir esa entrada", Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+            .show()
     }
 
     // ---------- Asistente de Google ----------
