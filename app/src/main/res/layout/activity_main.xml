@@ -1,44 +1,96 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
+    android:layout_height="match_parent"
+    android:background="@color/bg_main">
 
-    <!-- TV en vivo a pantalla completa (como webOS): el canal suena y se ve aqui mismo -->
-    <android.media.tv.TvView
-        android:id="@+id/tvView"
+    <!-- Imagen destacada arriba a la derecha -->
+    <FrameLayout
+        android:id="@+id/heroGroup"
+        android:layout_width="640dp"
+        android:layout_height="340dp"
+        android:layout_gravity="top|end">
+
+        <ImageView
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:scaleType="centerCrop"
+            android:src="@drawable/hero_placeholder" />
+
+        <View
+            android:layout_width="360dp"
+            android:layout_height="match_parent"
+            android:layout_gravity="start"
+            android:background="@drawable/scrim_left" />
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="150dp"
+            android:layout_gravity="bottom"
+            android:background="@drawable/scrim_bottom" />
+    </FrameLayout>
+
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:visibility="gone" />
-
-    <!-- ===== MENU INFERIOR (aparece sobre la TV) ===== -->
-    <LinearLayout
-        android:id="@+id/menuBar"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_gravity="bottom"
         android:orientation="vertical"
-        android:background="@drawable/scrim_bottom"
         android:paddingStart="40dp"
         android:paddingEnd="40dp"
-        android:paddingTop="56dp"
-        android:paddingBottom="18dp">
+        android:paddingTop="16dp">
 
-        <!-- Linea de arriba: nombre de la app, notificaciones, ajustes, perfil y reloj -->
+        <!-- BARRA SUPERIOR: asistente, pestañas, notificaciones, ajustes, perfil y reloj -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="44dp"
             android:orientation="horizontal"
             android:gravity="center_vertical">
 
+            <LinearLayout
+                android:id="@+id/search"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:gravity="center_vertical"
+                android:paddingStart="10dp"
+                android:paddingEnd="14dp"
+                android:focusable="true"
+                android:background="@drawable/pill_focus_bg">
+
+                <ImageView
+                    android:id="@+id/assistantIcon"
+                    android:layout_width="24dp"
+                    android:layout_height="24dp"
+                    android:scaleType="fitCenter"
+                    android:src="@drawable/ic_assistant" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:text="@string/search"
+                    android:textColor="@color/tab_text"
+                    android:textSize="14sp" />
+            </LinearLayout>
+
             <TextView
-                android:id="@+id/appName"
+                android:id="@+id/tabHome"
+                style="@style/Tab"
+                android:layout_marginStart="14dp"
+                android:text="@string/tab_home" />
+
+            <TextView
+                android:id="@+id/tabShop"
+                style="@style/Tab"
+                android:text="@string/tab_shop" />
+
+            <TextView
+                android:id="@+id/tabApps"
+                style="@style/Tab"
+                android:text="@string/tab_apps" />
+
+            <View
                 android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:maxLines="1"
-                android:ellipsize="end"
-                android:textColor="@color/text_primary"
-                android:textSize="14sp" />
+                android:layout_height="1dp"
+                android:layout_weight="1" />
 
             <ImageView
                 android:id="@+id/iconNotifications"
@@ -80,84 +132,110 @@
                 android:textSize="16sp" />
         </LinearLayout>
 
-        <!-- Linea de abajo: asistente, todas las apps y la fila de apps -->
+        <!-- ===== PANTALLA DE INICIO ===== -->
         <LinearLayout
+            android:id="@+id/homeContent"
             android:layout_width="match_parent"
-            android:layout_height="76dp"
-            android:orientation="horizontal"
-            android:gravity="center_vertical">
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:orientation="vertical">
 
+            <!-- Texto del destacado -->
             <LinearLayout
-                android:id="@+id/search"
                 android:layout_width="wrap_content"
-                android:layout_height="36dp"
-                android:gravity="center_vertical"
-                android:paddingStart="10dp"
-                android:paddingEnd="14dp"
-                android:focusable="true"
-                android:background="@drawable/pill_focus_bg">
-
-                <ImageView
-                    android:id="@+id/assistantIcon"
-                    android:layout_width="24dp"
-                    android:layout_height="24dp"
-                    android:scaleType="fitCenter"
-                    android:src="@drawable/ic_assistant" />
+                android:layout_height="wrap_content"
+                android:layout_marginTop="22dp"
+                android:orientation="vertical">
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginStart="8dp"
-                    android:text="@string/search"
-                    android:textColor="@color/tab_text"
-                    android:textSize="14sp" />
+                    android:text="@string/hero_label"
+                    android:textColor="@color/text_primary"
+                    android:textSize="12sp" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="@string/hero_title"
+                    android:textColor="@color/text_primary"
+                    android:textSize="32sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="@string/hero_subtitle"
+                    android:textColor="@color/text_primary"
+                    android:textSize="15sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:maxWidth="420dp"
+                    android:text="@string/hero_description"
+                    android:textColor="#CCFFFFFF"
+                    android:textSize="13sp" />
             </LinearLayout>
 
             <TextView
-                android:id="@+id/tabApps"
-                style="@style/Tab"
-                android:layout_marginStart="8dp"
-                android:text="@string/all_apps" />
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="14dp"
+                android:text="@string/home_apps"
+                android:textColor="@color/text_primary"
+                android:textSize="12sp" />
 
+            <!-- Fila con TODAS las apps (menos las que ocultes) -->
             <androidx.recyclerview.widget.RecyclerView
                 android:id="@+id/appsRow"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_weight="1"
-                android:layout_marginStart="16dp"
+                android:layout_width="match_parent"
+                android:layout_height="76dp"
+                android:layout_marginTop="2dp"
                 android:clipToPadding="false"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp"
                 android:paddingTop="8dp"
                 android:paddingBottom="8dp" />
+
+            <TextView
+                android:id="@+id/appName"
+                android:layout_width="wrap_content"
+                android:layout_height="16dp"
+                android:textColor="@color/text_primary"
+                android:textSize="11sp" />
         </LinearLayout>
-    </LinearLayout>
 
-    <!-- ===== PANTALLA "TODAS LAS APPS" ===== -->
-    <LinearLayout
-        android:id="@+id/panel"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:orientation="vertical"
-        android:background="@color/bg_main"
-        android:paddingStart="40dp"
-        android:paddingEnd="40dp"
-        android:paddingTop="34dp"
-        android:visibility="gone">
-
-        <TextView
-            android:id="@+id/panelTitle"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:textColor="@color/text_primary"
-            android:textSize="20sp"
-            android:textStyle="bold" />
-
-        <androidx.recyclerview.widget.RecyclerView
-            android:id="@+id/panelList"
+        <!-- ===== PANTALLA "APPS" (todas las apps) ===== -->
+        <LinearLayout
+            android:id="@+id/panel"
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1"
-            android:layout_marginTop="12dp"
-            android:clipToPadding="false"
-            android:paddingBottom="16dp" />
+            android:orientation="vertical"
+            android:paddingTop="18dp"
+            android:visibility="gone">
+
+            <TextView
+                android:id="@+id/panelTitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="@color/text_primary"
+                android:textSize="20sp"
+                android:textStyle="bold" />
+
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/panelList"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:layout_marginTop="12dp"
+                android:clipToPadding="false"
+                android:paddingBottom="16dp" />
+        </LinearLayout>
     </LinearLayout>
 </FrameLayout>
