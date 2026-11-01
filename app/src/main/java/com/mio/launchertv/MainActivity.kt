@@ -1,5 +1,6 @@
 package com.mio.launchertv
 
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
@@ -38,11 +39,6 @@ class MainActivity : AppCompatActivity() {
     private val spotify = listOf("com.spotify.tv.android")
     private val playStore = listOf("com.android.vending")
 
-    // App de TV en vivo (para el boton de TV y de entradas del control).
-    private val tvApps = listOf(
-        "com.google.android.tv", "com.android.tv", "org.droidtv.channels",
-        "com.sony.dtv.tvx", "com.tcl.tv", "com.hisense.tv", "com.xiaomi.mitv.tvplayer"
-    )
 
     // Estas salen primero; el resto va despues, en orden alfabetico.
     // Despues puedes moverlas tu con "Mover".
@@ -68,12 +64,17 @@ class MainActivity : AppCompatActivity() {
     private var rowStart = 0        // primera app visible de la fila de inicio
     private var rowVisible = 6      // cuantas apps COMPLETAS caben en la fila
     private var rowFitted = false
-    private var consumedKey = -1
+    private var consumedKey: String? = null
+    private var pendingAction: String? = null
+    private var isForeground = false
+    private var learnDialog: AlertDialog? = null
+    private var learnListener: SharedPreferences.OnSharedPreferenceChangeListener? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
         prefs = getSharedPreferences("launcher", Context.MODE_PRIVATE)
+        pendingAction = intent?.getStringExtra(RemoteActions.EXTRA)
 
         appsRow = findViewById(R.id.appsRow)
         appsRow.layoutManager =
@@ -97,7 +98,7 @@ class MainActivity : AppCompatActivity() {
         click(R.id.search) { openAssistant() }
         click(R.id.iconNotifications) { openNotifications() }
         click(R.id.iconSettings) { startActivity(Intent(Settings.ACTION_SETTINGS)) }
-        click(R.id.profile) { }
+        click(R.id.profile) { showRemoteSetup() }
 
         // Pestañas
         selectTab(findViewById(R.id.tabHome))
@@ -108,10 +109,31 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        isForeground = true
         when (mode) {
             Mode.HOME -> refreshHome()
             Mode.APPS -> showApps()
         }
+        processPending()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        isForeground = false
+    }
+
+    // El servicio de botones (o el sistema) nos pide hacer algo: abrir entradas, todas las apps...
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        pendingAction = intent.getStringExtra(RemoteActions.EXTRA)
+        if (isForeground) processPending()
+    }
+
+    private fun processPending() {
+        val action = pendingAction ?: return
+        pendingAction = null
+        runRemoteAction(action)
     }
 
     @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
@@ -138,72 +160,126 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // Botones especiales del control (ajustes, entradas, TV, apps...)
-        val code = event.keyCode
-        if (event.action == KeyEvent.ACTION_UP && code == consumedKey) {
-            consumedKey = -1
+        // Botones especiales del control (ajustes, entradas, TV, Netflix, YouTube...)
+        val id = RemoteActions.keyId(event)
+        if (event.action == KeyEvent.ACTION_UP && id == consumedKey) {
+            consumedKey = null
             return true
         }
-        if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0 &&
-            handleRemoteKey(code)
-        ) {
-            consumedKey = code
-            return true
+        if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
+            if (RemoteActions.tryLearn(this, prefs, event)) {
+                consumedKey = id
+                return true
+            }
+            val action = RemoteActions.actionFor(prefs, event)
+            if (action != null) {
+                consumedKey = id
+                runRemoteAction(action)
+                return true
+            }
         }
         return super.dispatchKeyEvent(event)
     }
 
     // ---------- Botones especiales del control ----------
 
-    private fun handleRemoteKey(code: Int): Boolean {
-        when (code) {
-            KeyEvent.KEYCODE_SETTINGS -> {
-                try {
-                    startActivity(Intent(Settings.ACTION_SETTINGS))
-                } catch (e: Exception) {
-                    Toast.makeText(this, "No pude abrir los ajustes", Toast.LENGTH_SHORT).show()
-                }
-            }
-            KeyEvent.KEYCODE_TV_INPUT -> showInputs()
-            KeyEvent.KEYCODE_TV -> openTvApp()
-            284 -> showMode(Mode.APPS) // boton de "todas las apps"
-            else -> {
-                // Boton que el launcher aun no conoce: muestra su codigo para poder asignarlo.
-                if (!isCommonKey(code)) {
-                    Toast.makeText(
-                        this,
-                        "Boton sin funcion: ${KeyEvent.keyCodeToString(code)} (codigo $code)",
-                        Toast.LENGTH_LONG
-                    ).show()
-                }
-                return false
-            }
+    private fun runRemoteAction(action: String) {
+        when (action) {
+            "inputs" -> showInputs()
+            "apps" -> showMode(Mode.APPS)
+            else -> RemoteActions.run(this, action)
         }
-        return true
     }
 
-    // Teclas normales que no hace falta avisar (navegacion, volumen, numeros, multimedia...).
-    private fun isCommonKey(code: Int): Boolean =
-        code in 7..16 || code in 144..153 ||
-            code in setOf(
-                3, 4, 19, 20, 21, 22, 23, 24, 25, 26, 56, 62, 66, 67, 69, 82, 84, 85, 86, 87,
-                88, 89, 90, 111, 126, 127, 130, 164, 166, 167, 187, 219, 223, 224, 231
-            )
-
     private fun openTvApp() {
-        val pkg = installed(tvApps)
-        if (pkg != null) {
-            openPackage(pkg)
-            return
+        RemoteActions.openTv(this)
+    }
+
+    // Pantalla para asignar cada boton del control (se abre con el circulo "G" de arriba).
+    private fun showRemoteSetup() {
+        val entries = listOf(
+            "Netflix" to RemoteActions.appAction(RemoteActions.NETFLIX),
+            "YouTube" to RemoteActions.appAction(RemoteActions.YOUTUBE),
+            "Prime Video" to RemoteActions.appAction(RemoteActions.PRIME),
+            "Todas las apps (boton rosado)" to "apps",
+            "Entradas" to "inputs",
+            "TV en vivo" to "tv",
+            "Ajustes" to "settings"
+        )
+        val labels = mutableListOf<String>()
+        labels.add(
+            if (serviceEnabled()) "Servicio de botones: ACTIVADO"
+            else "1) ACTIVAR el servicio de botones"
+        )
+        for (entry in entries) labels.add("Asignar: ${entry.first}")
+        labels.add("Borrar todas las asignaciones")
+
+        AlertDialog.Builder(this)
+            .setTitle("Botones del control")
+            .setItems(labels.toTypedArray()) { _, which ->
+                when {
+                    which == 0 -> openAccessibilitySettings()
+                    which <= entries.size -> learnButton(entries[which - 1].first, entries[which - 1].second)
+                    else -> {
+                        RemoteActions.clearAll(prefs)
+                        Toast.makeText(this, "Asignaciones borradas", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+            .show()
+    }
+
+    private fun serviceEnabled(): Boolean {
+        val enabled = Settings.Secure.getString(
+            contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+        ) ?: return false
+        val component = ComponentName(this, RemoteKeyService::class.java)
+        return enabled.split(':').any {
+            it.equals(component.flattenToString(), ignoreCase = true) ||
+                it.equals(component.flattenToShortString(), ignoreCase = true)
         }
+    }
+
+    private fun openAccessibilitySettings() {
         try {
-            startActivity(
-                Intent(Intent.ACTION_VIEW, TvContract.Channels.CONTENT_URI)
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            )
+            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
         } catch (e: Exception) {
-            Toast.makeText(this, "No encontre la app de TV", Toast.LENGTH_LONG).show()
+            Toast.makeText(
+                this,
+                "Abre: Ajustes > Preferencias del dispositivo > Accesibilidad > Botones del control",
+                Toast.LENGTH_LONG
+            ).show()
         }
+    }
+
+    // Espera a que pulses un boton del control y se lo asigna a esa accion.
+    private fun learnButton(label: String, action: String) {
+        RemoteActions.startLearn(prefs, action, label)
+        val listener = SharedPreferences.OnSharedPreferenceChangeListener { p, key ->
+            if (key == "learn_action" && p.getString("learn_action", null) == null) {
+                learnDialog?.dismiss()
+            }
+        }
+        learnListener = listener
+        prefs.registerOnSharedPreferenceChangeListener(listener)
+
+        val dialog = AlertDialog.Builder(this)
+            .setTitle(label)
+            .setMessage(
+                "Pulsa ahora el boton del control que quieres usar para esto.\n\n" +
+                    "Si no pasa nada, primero activa el servicio de botones.\n" +
+                    "(Atras para cancelar)"
+            )
+            .setOnKeyListener { _, _, event -> RemoteActions.tryLearn(this, prefs, event) }
+            .setOnDismissListener {
+                prefs.unregisterOnSharedPreferenceChangeListener(listener)
+                learnListener = null
+                learnDialog = null
+                RemoteActions.stopLearn(prefs)
+            }
+            .create()
+        learnDialog = dialog
+        dialog.show()
     }
 
     // Boton de entradas: lista HDMI / AV / TV y abre la que elijas.

@@ -22,4 +22,7 @@
     <string name="chip_top">Películas más vendidas</string>
     <string name="chip_popular">Populares</string>
     <string name="chip_trending">Tendencias</string>
+
+    <string name="remote_service_label">Botones del control</string>
+    <string name="remote_service_description">Permite que los botones del control (Netflix, YouTube, Entradas, Ajustes...) funcionen con este launcher.</string>
 </resources>
