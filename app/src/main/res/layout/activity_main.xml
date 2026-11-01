@@ -6,6 +6,7 @@
 
     <!-- IMAGEN DEL DESTACADO (arriba a la derecha). Pon tu imagen en android:src -->
     <FrameLayout
+        android:id="@+id/heroBox"
         android:layout_width="640dp"
         android:layout_height="340dp"
         android:layout_gravity="top|end">
@@ -135,126 +136,176 @@
                 android:textSize="16sp" />
         </LinearLayout>
 
-        <!-- TEXTO DEL DESTACADO -->
+        <!-- ===== PANTALLA DE INICIO ===== -->
         <LinearLayout
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="22dp"
-            android:orientation="vertical">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/hero_label"
-                android:textColor="@color/text_primary"
-                android:textSize="12sp" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:text="@string/hero_title"
-                android:textColor="@color/text_primary"
-                android:textSize="32sp"
-                android:textStyle="bold" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:text="@string/hero_subtitle"
-                android:textColor="@color/text_primary"
-                android:textSize="15sp"
-                android:textStyle="bold" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:maxWidth="420dp"
-                android:text="@string/hero_description"
-                android:textColor="#CCFFFFFF"
-                android:textSize="13sp" />
-        </LinearLayout>
-
-        <!-- APPS FAVORITAS -->
-        <TextView
-            android:id="@+id/rowTitle"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="14dp"
-            android:text="@string/favorites"
-            android:textColor="@color/text_primary"
-            android:textSize="12sp" />
-
-        <androidx.recyclerview.widget.RecyclerView
-            android:id="@+id/appsRow"
-            android:layout_width="match_parent"
-            android:layout_height="76dp"
-            android:layout_marginTop="2dp"
-            android:clipToPadding="false"
-            android:paddingTop="8dp"
-            android:paddingBottom="8dp" />
-
-        <TextView
-            android:id="@+id/appName"
-            android:layout_width="wrap_content"
-            android:layout_height="16dp"
-            android:textColor="@color/text_primary"
-            android:textSize="11sp" />
-
-        <!-- BOTONES DE CATEGORIAS -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:orientation="horizontal">
-
-            <TextView
-                android:id="@+id/chipLive"
-                style="@style/Chip"
-                android:text="@string/chip_live" />
-
-            <TextView
-                android:id="@+id/chipTop"
-                style="@style/Chip"
-                android:text="@string/chip_top" />
-
-            <TextView
-                android:id="@+id/chipPopular"
-                style="@style/Chip"
-                android:text="@string/chip_popular" />
-
-            <TextView
-                android:id="@+id/chipTrending"
-                style="@style/Chip"
-                android:text="@string/chip_trending" />
-        </LinearLayout>
-
-        <!-- FILA DE TARJETAS (se corta abajo, como en Android TV) -->
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            android:text="@string/row_for_you"
-            android:textColor="@color/text_primary"
-            android:textSize="12sp" />
-
-        <HorizontalScrollView
-            android:id="@+id/cardsScroll"
+            android:id="@+id/homeContent"
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1"
-            android:layout_marginTop="4dp"
-            android:clipToPadding="false"
-            android:scrollbars="none">
+            android:orientation="vertical">
 
             <LinearLayout
-                android:id="@+id/cardsRow"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:paddingTop="4dp" />
-        </HorizontalScrollView>
+                android:layout_marginTop="22dp"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/hero_label"
+                    android:textColor="@color/text_primary"
+                    android:textSize="12sp" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="@string/hero_title"
+                    android:textColor="@color/text_primary"
+                    android:textSize="32sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="@string/hero_subtitle"
+                    android:textColor="@color/text_primary"
+                    android:textSize="15sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:maxWidth="420dp"
+                    android:text="@string/hero_description"
+                    android:textColor="#CCFFFFFF"
+                    android:textSize="13sp" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/rowTitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="14dp"
+                android:text="@string/home_apps"
+                android:textColor="@color/text_primary"
+                android:textSize="12sp" />
+
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/appsRow"
+                android:layout_width="match_parent"
+                android:layout_height="76dp"
+                android:layout_marginTop="2dp"
+                android:clipToPadding="false"
+                android:paddingTop="8dp"
+                android:paddingBottom="8dp" />
+
+            <TextView
+                android:id="@+id/appName"
+                android:layout_width="wrap_content"
+                android:layout_height="16dp"
+                android:textColor="@color/text_primary"
+                android:textSize="11sp" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/chipLive"
+                    style="@style/Chip"
+                    android:text="@string/chip_live" />
+
+                <TextView
+                    android:id="@+id/chipTop"
+                    style="@style/Chip"
+                    android:text="@string/chip_top" />
+
+                <TextView
+                    android:id="@+id/chipPopular"
+                    style="@style/Chip"
+                    android:text="@string/chip_popular" />
+
+                <TextView
+                    android:id="@+id/chipTrending"
+                    style="@style/Chip"
+                    android:text="@string/chip_trending" />
+            </LinearLayout>
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:text="@string/row_for_you"
+                android:textColor="@color/text_primary"
+                android:textSize="12sp" />
+
+            <HorizontalScrollView
+                android:id="@+id/cardsScroll"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:layout_marginTop="4dp"
+                android:clipToPadding="false"
+                android:scrollbars="none">
+
+                <LinearLayout
+                    android:id="@+id/cardsRow"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:paddingTop="4dp" />
+            </HorizontalScrollView>
+        </LinearLayout>
+
+        <!-- ===== PANEL (sirve para "Apps" y "En vivo") ===== -->
+        <LinearLayout
+            android:id="@+id/panel"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:paddingTop="18dp"
+            android:visibility="gone">
+
+            <TextView
+                android:id="@+id/panelTitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="@color/text_primary"
+                android:textSize="20sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/panelMessage"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:maxWidth="560dp"
+                android:textColor="#CCFFFFFF"
+                android:textSize="14sp"
+                android:visibility="gone" />
+
+            <TextView
+                android:id="@+id/panelAction"
+                style="@style/Chip"
+                android:layout_marginTop="12dp"
+                android:text="Abrir app de TV"
+                android:visibility="gone" />
+
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/panelList"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:layout_marginTop="12dp"
+                android:clipToPadding="false"
+                android:paddingBottom="16dp" />
+        </LinearLayout>
     </LinearLayout>
 </FrameLayout>
