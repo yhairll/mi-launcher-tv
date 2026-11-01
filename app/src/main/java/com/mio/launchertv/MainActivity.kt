@@ -20,6 +20,7 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.LinearSmoothScroller
 import androidx.recyclerview.widget.RecyclerView
 
 class MainActivity : AppCompatActivity() {
@@ -56,6 +57,9 @@ class MainActivity : AppCompatActivity() {
     private var selectedTab: View? = null
     private var homeAdapter: AppsAdapter? = null
     private var movingPkg: String? = null
+    private var rowStart = 0        // primera app visible de la fila de inicio
+    private var rowVisible = 6      // cuantas apps COMPLETAS caben en la fila
+    private var rowFitted = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -189,7 +193,9 @@ class MainActivity : AppCompatActivity() {
         appName.text = ""
         val adapter = AppsAdapter(homeApps())
         homeAdapter = adapter
+        rowStart = 0
         appsRow.adapter = adapter
+        if (!rowFitted) fitRow()
     }
 
     private fun showApps() {
@@ -341,7 +347,7 @@ class MainActivity : AppCompatActivity() {
             val v = appsRow.findViewHolderForAdapterPosition(pos)?.itemView
             if (v != null) {
                 v.requestFocus()
-                centerInRow(v)
+                alignWindow(pos)
             }
         }
     }
@@ -350,14 +356,44 @@ class MainActivity : AppCompatActivity() {
 
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
 
-    // Deja la app enfocada en el CENTRO de la fila, completa (nunca cortada a la mitad).
-    // Primero se cancela el desplazamiento automatico de Android, que chocaba con este.
-    private fun centerInRow(v: View) {
-        val rv = v.parent as? RecyclerView ?: return
-        rv.stopScroll()
-        val rowCenter = rv.paddingLeft + (rv.width - rv.paddingLeft - rv.paddingRight) / 2
-        val dx = (v.left + v.width / 2) - rowCenter
-        if (dx != 0) rv.smoothScrollBy(dx, 0)
+    // Ajusta el ancho de la fila para que quepan SOLO apps completas:
+    // nunca queda una app cortada a la mitad en la esquina derecha.
+    private fun fitRow(attempt: Int = 0) {
+        appsRow.post {
+            val child = appsRow.getChildAt(0)
+            val parentWidth = (appsRow.parent as? View)?.width ?: 0
+            if (child == null || child.width == 0 || parentWidth == 0) {
+                if (attempt < 20 && (homeAdapter?.itemCount ?: 0) > 0) fitRow(attempt + 1)
+                return@post
+            }
+            val lp = child.layoutParams as ViewGroup.MarginLayoutParams
+            val slot = child.width + lp.leftMargin + lp.rightMargin
+            val n = maxOf(1, (parentWidth - appsRow.paddingLeft) / slot)
+            rowVisible = n
+            rowFitted = true
+            val params = appsRow.layoutParams
+            params.width = appsRow.paddingLeft + n * slot
+            appsRow.layoutParams = params
+        }
+    }
+
+    // La fila se mueve "por paginas" de apps completas: la app enfocada siempre se ve entera,
+    // y al llegar al borde la fila avanza una app para dejarla dentro.
+    private fun alignWindow(pos: Int) {
+        val count = homeAdapter?.itemCount ?: return
+        if (pos < 0) return
+        val n = rowVisible
+        var start = rowStart
+        if (pos < start) start = pos else if (pos > start + n - 1) start = pos - n + 1
+        start = start.coerceIn(0, maxOf(0, count - n))
+        rowStart = start
+        // Primero se cancela el desplazamiento automatico de Android, que chocaba con este.
+        appsRow.stopScroll()
+        val scroller = object : LinearSmoothScroller(this@MainActivity) {
+            override fun getHorizontalSnapPreference(): Int = LinearSmoothScroller.SNAP_TO_START
+        }
+        scroller.targetPosition = start
+        appsRow.layoutManager?.startSmoothScroll(scroller)
     }
 
     private fun click(id: Int, action: () -> Unit) {
@@ -432,7 +468,7 @@ class MainActivity : AppCompatActivity() {
                 v.animate().scaleX(s).scaleY(s).setDuration(120).start()
                 if (hasFocus && v.parent === appsRow) {
                     if (movingPkg == null) appName.text = info.loadLabel(pm)
-                    centerInRow(v)
+                    alignWindow(appsRow.getChildAdapterPosition(v))
                 }
             }
         }
