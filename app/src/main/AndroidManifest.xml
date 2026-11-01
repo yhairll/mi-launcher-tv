@@ -6,6 +6,9 @@
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
     <uses-feature android:name="android.software.live_tv" android:required="false" />
 
+    <!-- Para poder desinstalar apps desde el menu de OK -->
+    <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
+
     <!-- Necesario para listar las apps instaladas (Android 11+) -->
     <uses-permission
         android:name="android.permission.QUERY_ALL_PACKAGES"

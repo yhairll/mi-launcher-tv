@@ -3,7 +3,9 @@ package com.mio.launchertv
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
+import android.content.pm.ApplicationInfo
 import android.content.pm.ResolveInfo
+import android.net.Uri
 import android.graphics.Rect
 import android.os.Bundle
 import android.provider.Settings
@@ -244,29 +246,52 @@ class MainActivity : AppCompatActivity() {
     private fun showAppMenu(info: ResolveInfo) {
         val pkg = info.activityInfo.packageName
         val options = if (mode == Mode.HOME) {
-            listOf("Ocultar", "Mover")
+            listOf("Ocultar", "Mover", "Desinstalar")
         } else if (pkg in hiddenSet()) {
-            listOf("Mostrar en inicio")
+            listOf("Mostrar en inicio", "Desinstalar")
         } else {
-            listOf("Ocultar de inicio")
+            listOf("Ocultar de inicio", "Desinstalar")
         }
 
         AlertDialog.Builder(this)
             .setTitle(info.loadLabel(packageManager).toString())
             .setItems(options.toTypedArray()) { _, which ->
-                if (mode == Mode.HOME) {
-                    if (which == 0) hideFromHome(info) else startMove(info)
-                } else {
-                    val hide = pkg !in hiddenSet()
-                    setHidden(pkg, hide)
-                    Toast.makeText(
-                        this,
-                        if (hide) "Oculta en inicio (sigue en Apps)" else "Ahora aparece en inicio",
-                        Toast.LENGTH_SHORT
-                    ).show()
+                when (options[which]) {
+                    "Ocultar" -> hideFromHome(info)
+                    "Mover" -> startMove(info)
+                    "Desinstalar" -> uninstallApp(info)
+                    else -> {
+                        val hide = pkg !in hiddenSet()
+                        setHidden(pkg, hide)
+                        Toast.makeText(
+                            this,
+                            if (hide) "Oculta en inicio (sigue en Apps)" else "Ahora aparece en inicio",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
                 }
             }
             .show()
+    }
+
+    // Borra la app del sistema. Android muestra su propia confirmacion antes de borrarla.
+    private fun uninstallApp(info: ResolveInfo) {
+        val appInfo = info.activityInfo.applicationInfo
+        val isSystem = appInfo.flags and ApplicationInfo.FLAG_SYSTEM != 0 &&
+            appInfo.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP == 0
+        if (isSystem) {
+            Toast.makeText(
+                this, "Es una app del sistema, no se puede desinstalar", Toast.LENGTH_LONG
+            ).show()
+            return
+        }
+        try {
+            startActivity(
+                Intent(Intent.ACTION_DELETE, Uri.parse("package:${info.activityInfo.packageName}"))
+            )
+        } catch (e: Exception) {
+            Toast.makeText(this, "No pude abrir el desinstalador", Toast.LENGTH_LONG).show()
+        }
     }
 
     private fun hideFromHome(info: ResolveInfo) {
