@@ -7,6 +7,7 @@ import android.content.pm.ResolveInfo
 import android.graphics.Rect
 import android.os.Bundle
 import android.provider.Settings
+import android.view.KeyEvent
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -33,7 +34,7 @@ class MainActivity : AppCompatActivity() {
     private val playStore = listOf("com.android.vending")
 
     // Estas salen primero; el resto va despues, en orden alfabetico.
-    // Despues puedes moverlas tu con "Mover hacia adelante / atras".
+    // Despues puedes moverlas tu con "Mover".
     private val favoritePackages =
         netflix + prime + youtube + youtubeMusic + hbo + disney + spotify + playStore
     // ===================================================
@@ -52,6 +53,7 @@ class MainActivity : AppCompatActivity() {
     private var mode = Mode.HOME
     private var selectedTab: View? = null
     private var homeAdapter: AppsAdapter? = null
+    private var movingPkg: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -103,6 +105,26 @@ class MainActivity : AppCompatActivity() {
         if (mode != Mode.HOME) showMode(Mode.HOME)
     }
 
+    // Mientras se mueve una app, las flechas izquierda/derecha la mueven y OK la deja ahi.
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (movingPkg != null && mode == Mode.HOME) {
+            val down = event.action == KeyEvent.ACTION_DOWN
+            when (event.keyCode) {
+                KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                    if (down) moveCurrent(if (event.keyCode == KeyEvent.KEYCODE_DPAD_LEFT) -1 else 1)
+                    return true
+                }
+                KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN -> return true
+                KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER,
+                KeyEvent.KEYCODE_NUMPAD_ENTER, KeyEvent.KEYCODE_BACK -> {
+                    if (down && event.repeatCount == 0) endMove()
+                    return true
+                }
+            }
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
     // ---------- Asistente de Google ----------
 
     private fun openAssistant() {
@@ -137,6 +159,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun showMode(newMode: Mode) {
         mode = newMode
+        movingPkg = null
         val home = newMode == Mode.HOME
         heroGroup.visibility = if (home) View.VISIBLE else View.GONE
         homeContent.visibility = if (home) View.VISIBLE else View.GONE
@@ -160,6 +183,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun refreshHome() {
+        movingPkg = null
         appName.text = ""
         val adapter = AppsAdapter(homeApps())
         homeAdapter = adapter
@@ -220,7 +244,7 @@ class MainActivity : AppCompatActivity() {
     private fun showAppMenu(info: ResolveInfo) {
         val pkg = info.activityInfo.packageName
         val options = if (mode == Mode.HOME) {
-            listOf("Ocultar app", "Mover hacia adelante", "Mover hacia atrás")
+            listOf("Ocultar", "Mover")
         } else if (pkg in hiddenSet()) {
             listOf("Mostrar en inicio")
         } else {
@@ -231,17 +255,7 @@ class MainActivity : AppCompatActivity() {
             .setTitle(info.loadLabel(packageManager).toString())
             .setItems(options.toTypedArray()) { _, which ->
                 if (mode == Mode.HOME) {
-                    when (which) {
-                        0 -> hideFromHome(info)
-                        1 -> {
-                            // Despues de mover, el menu se abre otra vez para seguir moviendo
-                            if (moveApp(info, 1)) showAppMenu(info)
-                        }
-                        2 -> {
-                            if (moveApp(info, -1)) showAppMenu(info)
-                        }
-                        else -> {}
-                    }
+                    if (which == 0) hideFromHome(info) else startMove(info)
                 } else {
                     val hide = pkg !in hiddenSet()
                     setHidden(pkg, hide)
@@ -266,31 +280,44 @@ class MainActivity : AppCompatActivity() {
         if (count > 0) focusHomeItem(minOf(maxOf(pos, 0), count - 1))
     }
 
-    // Mueve la app un lugar hacia adelante (+1, derecha) o hacia atras (-1, izquierda).
-    private fun moveApp(info: ResolveInfo, delta: Int): Boolean {
-        val adapter = homeAdapter ?: return false
+    // ---------- Mover apps en inicio ----------
+
+    private fun startMove(info: ResolveInfo) {
+        val adapter = homeAdapter ?: return
         val pkg = info.activityInfo.packageName
+        val pos = adapter.indexOfPackage(pkg)
+        if (pos < 0) return
+        movingPkg = pkg
+        appName.text =
+            "Moviendo ${info.loadLabel(packageManager)}:  ◀ ▶ para mover  ·  OK para dejarla aquí"
+        focusHomeItem(pos)
+    }
+
+    private fun moveCurrent(delta: Int) {
+        val pkg = movingPkg ?: return
+        val adapter = homeAdapter ?: return
         val from = adapter.indexOfPackage(pkg)
         val to = from + delta
-        if (from < 0 || to < 0 || to >= adapter.itemCount) {
-            Toast.makeText(
-                this,
-                if (delta > 0) "Ya esta al final" else "Ya esta al inicio",
-                Toast.LENGTH_SHORT
-            ).show()
-            return false
-        }
+        if (from < 0 || to < 0 || to >= adapter.itemCount) return
         adapter.move(from, to)
         saveOrder(adapter.packages())
-        appsRow.scrollToPosition(to)
         focusHomeItem(to)
-        return true
+    }
+
+    private fun endMove() {
+        movingPkg = null
+        appName.text = ""
+        Toast.makeText(this, "Orden guardado", Toast.LENGTH_SHORT).show()
     }
 
     private fun focusHomeItem(pos: Int) {
         appsRow.scrollToPosition(pos)
         appsRow.post {
-            appsRow.findViewHolderForAdapterPosition(pos)?.itemView?.requestFocus()
+            val v = appsRow.findViewHolderForAdapterPosition(pos)?.itemView
+            if (v != null) {
+                v.requestFocus()
+                centerInRow(v)
+            }
         }
     }
 
@@ -379,7 +406,7 @@ class MainActivity : AppCompatActivity() {
                 val s = if (hasFocus) 1.15f else 1f
                 v.animate().scaleX(s).scaleY(s).setDuration(120).start()
                 if (hasFocus && v.parent === appsRow) {
-                    appName.text = info.loadLabel(pm)
+                    if (movingPkg == null) appName.text = info.loadLabel(pm)
                     centerInRow(v)
                 }
             }
