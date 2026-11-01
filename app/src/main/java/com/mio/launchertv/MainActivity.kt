@@ -579,6 +579,14 @@ class MainActivity : AppCompatActivity() {
 
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
 
+    // Como en Android TV: la app enfocada queda al borde izquierdo de la fila,
+    // y las anteriores salen por completo, sin quedar cortadas a la mitad.
+    private fun alignLeft(v: View) {
+        val rv = v.parent as? RecyclerView ?: return
+        val dx = v.left - rv.paddingLeft
+        if (dx != 0) rv.smoothScrollBy(dx, 0)
+    }
+
     private fun click(id: Int, action: () -> Unit) {
         findViewById<View>(id).setOnClickListener { action() }
     }
@@ -663,7 +671,10 @@ class MainActivity : AppCompatActivity() {
             holder.itemView.setOnFocusChangeListener { v, hasFocus ->
                 val s = if (hasFocus) 1.15f else 1f
                 v.animate().scaleX(s).scaleY(s).setDuration(120).start()
-                if (hasFocus && movingPkg == null) appName.text = info.loadLabel(pm)
+                if (hasFocus && movingPkg == null) {
+                    appName.text = info.loadLabel(pm)
+                    if (v.parent === appsRow) alignLeft(v)
+                }
             }
         }
 
@@ -707,6 +718,7 @@ class MainActivity : AppCompatActivity() {
             holder.itemView.setOnFocusChangeListener { v, hasFocus ->
                 val s = if (hasFocus) 1.06f else 1f
                 v.animate().scaleX(s).scaleY(s).setDuration(120).start()
+                if (hasFocus) alignLeft(v)
             }
         }
 

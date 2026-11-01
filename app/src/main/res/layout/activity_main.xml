@@ -116,6 +116,7 @@
             android:layout_height="76dp"
             android:layout_marginTop="2dp"
             android:clipToPadding="false"
+            android:paddingStart="8dp"
             android:paddingTop="8dp"
             android:paddingBottom="8dp" />
 
