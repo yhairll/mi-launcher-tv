@@ -13,13 +13,13 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Instalar Java 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: 17
 
-      - name: Instalar Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Aceptar licencias del Android SDK
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses || true
 
       - name: Instalar Gradle
         uses: gradle/actions/setup-gradle@v4
