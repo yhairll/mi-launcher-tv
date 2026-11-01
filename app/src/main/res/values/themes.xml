@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.LauncherTV" parent="Theme.AppCompat.NoActionBar">
+        <item name="android:windowBackground">@color/bg_main</item>
+        <item name="android:windowShowWallpaper">false</item>
+    </style>
+
+    <style name="Tab">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">36dp</item>
+        <item name="android:gravity">center</item>
+        <item name="android:paddingStart">14dp</item>
+        <item name="android:paddingEnd">14dp</item>
+        <item name="android:focusable">true</item>
+        <item name="android:background">@drawable/pill_focus_bg</item>
+        <item name="android:textColor">@color/tab_text</item>
+        <item name="android:textSize">14sp</item>
+    </style>
+
+    <style name="Chip">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">30dp</item>
+        <item name="android:layout_marginEnd">10dp</item>
+        <item name="android:gravity">center</item>
+        <item name="android:paddingStart">14dp</item>
+        <item name="android:paddingEnd">14dp</item>
+        <item name="android:focusable">true</item>
+        <item name="android:background">@drawable/chip_bg</item>
+        <item name="android:textColor">@color/chip_text</item>
+        <item name="android:textSize">12sp</item>
+    </style>
+</resources>

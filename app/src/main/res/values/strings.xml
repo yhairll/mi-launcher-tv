@@ -1,0 +1,25 @@
+<resources>
+    <string name="app_name">Mi Launcher</string>
+
+    <string name="search">Buscar</string>
+    <string name="tab_home">Inicio</string>
+    <string name="tab_live">En vivo</string>
+    <string name="tab_shop">Tienda</string>
+    <string name="tab_apps">Apps</string>
+    <string name="profile_letter">G</string>
+
+    <!-- Texto del destacado: cambialo a tu gusto -->
+    <string name="hero_label">Mi TV</string>
+    <string name="hero_title">Bienvenido</string>
+    <string name="hero_subtitle">Nuevo en streaming · Acción</string>
+    <string name="hero_description">Escribe aquí la descripción de lo que quieras destacar.</string>
+
+    <string name="favorites">Apps favoritas</string>
+    <string name="all_apps">Todas las apps</string>
+
+    <string name="chip_live">TV en vivo gratis</string>
+    <string name="chip_top">Películas más vendidas</string>
+    <string name="chip_popular">Populares</string>
+    <string name="chip_trending">Tendencias</string>
+    <string name="row_for_you">Para ti</string>
+</resources>
