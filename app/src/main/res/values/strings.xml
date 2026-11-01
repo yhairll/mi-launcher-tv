@@ -22,5 +22,4 @@
     <string name="chip_top">Películas más vendidas</string>
     <string name="chip_popular">Populares</string>
     <string name="chip_trending">Tendencias</string>
-    <string name="row_for_you">Para ti</string>
 </resources>

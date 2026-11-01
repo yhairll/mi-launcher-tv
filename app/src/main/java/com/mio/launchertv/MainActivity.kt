@@ -52,8 +52,6 @@ class MainActivity : AppCompatActivity() {
     private val favoritePackages =
         netflix + prime + youtube + youtubeMusic + hbo + disney + spotify + playStore
 
-    // Fila de respaldo "Para ti" (se usa si Android no deja leer los recomendados)
-    private val fallbackApps = listOf(hbo, disney, youtube, netflix, prime, spotify)
     // =====================================
 
     private enum class Mode { HOME, APPS }
@@ -120,7 +118,7 @@ class MainActivity : AppCompatActivity() {
 
         // Barra superior
         click(R.id.search) { openAssistant() }
-        loadAssistantIcon()
+        click(R.id.iconNotifications) { openNotifications() }
         click(R.id.iconSettings) { startActivity(Intent(Settings.ACTION_SETTINGS)) }
         click(R.id.profile) { }
 
@@ -136,7 +134,7 @@ class MainActivity : AppCompatActivity() {
         when (mode) {
             Mode.HOME -> {
                 refreshHome()
-                showRows(cachedRows ?: listOf(fallbackRow()))
+                showRows(cachedRows ?: emptyList())
                 loadRows()
             }
             Mode.APPS -> showApps()
@@ -185,19 +183,19 @@ class MainActivity : AppCompatActivity() {
         openPackage("com.google.android.katniss")
     }
 
-    // Usa el icono del asistente que tenga instalado el propio TV.
-    private fun loadAssistantIcon() {
-        val icon = try {
-            val ri = packageManager.resolveActivity(Intent(Intent.ACTION_ASSIST), 0)
-            if (ri != null && ri.activityInfo.packageName != "android") {
-                ri.loadIcon(packageManager)
-            } else {
-                appIcon("com.google.android.katniss")
-            }
+    // ---------- Notificaciones ----------
+
+    // Abre el panel de notificaciones del sistema (si el TV lo tiene).
+    private fun openNotifications() {
+        try {
+            val service = getSystemService("statusbar")
+            Class.forName("android.app.StatusBarManager")
+                .getMethod("expandNotificationsPanel")
+                .invoke(service)
         } catch (e: Exception) {
-            null
+            Toast.makeText(this, "Este TV no tiene panel de notificaciones", Toast.LENGTH_SHORT)
+                .show()
         }
-        if (icon != null) findViewById<ImageView>(R.id.assistantIcon).setImageDrawable(icon)
     }
 
     // ---------- Pantallas ----------
@@ -378,28 +376,6 @@ class MainActivity : AppCompatActivity() {
             }
         }
         return rows
-    }
-
-    // Respaldo: banners de tus apps de streaming
-    private fun fallbackRow(): Row {
-        val programs = mutableListOf<Program>()
-        val shown = mutableSetOf<String>()
-        for (candidates in fallbackApps) {
-            val pkg = installed(candidates) ?: continue
-            if (!shown.add(pkg)) continue
-            val banner = appBanner(pkg)
-            programs.add(
-                Program(
-                    title = appLabel(pkg),
-                    imageUri = null,
-                    intentUri = null,
-                    pkg = pkg,
-                    image = banner ?: appIcon(pkg),
-                    iconOnly = banner == null
-                )
-            )
-        }
-        return Row("Para ti", programs)
     }
 
     private fun openProgram(p: Program) {
@@ -605,20 +581,6 @@ class MainActivity : AppCompatActivity() {
 
     private fun installed(candidates: List<String>): String? =
         candidates.firstOrNull { launchIntent(it) != null }
-
-    private fun appBanner(pkg: String): Drawable? = try {
-        val intent = launchIntent(pkg)
-        (intent?.let { packageManager.getActivityBanner(it) })
-            ?: packageManager.getApplicationBanner(pkg)
-    } catch (e: Exception) {
-        null
-    }
-
-    private fun appIcon(pkg: String): Drawable? = try {
-        packageManager.getApplicationIcon(pkg)
-    } catch (e: Exception) {
-        null
-    }
 
     // ---------- Adaptadores ----------
 
