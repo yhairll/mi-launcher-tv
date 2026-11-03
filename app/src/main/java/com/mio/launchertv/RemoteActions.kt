@@ -7,6 +7,9 @@ import android.media.tv.TvContract
 import android.provider.Settings
 import android.view.KeyEvent
 import android.widget.Toast
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 // Acciones de los botones especiales del control (Netflix, YouTube, Entradas, Ajustes...).
 // Las usan tanto el launcher como el servicio de botones.
@@ -17,7 +20,7 @@ object RemoteActions {
     // true = la app incluye el servicio de accesibilidad "Botones del control".
     // Google Play Protect puede bloquear la instalacion por usarlo; en ese caso se pone false
     // y se quita el <service> del AndroidManifest.xml.
-    const val SERVICE_AVAILABLE = true
+    const val SERVICE_AVAILABLE = false
 
     val NETFLIX = listOf("com.netflix.ninja")
     val YOUTUBE = listOf("com.google.android.youtube.tv")
@@ -124,6 +127,22 @@ object RemoteActions {
         ).show()
         return true
     }
+
+    // ---------- Registro del servicio (para saber por que se desactiva) ----------
+
+    fun log(ctx: Context, message: String) {
+        try {
+            val prefs = ctx.getSharedPreferences("launcher", Context.MODE_PRIVATE)
+            val old = (prefs.getString("svc_log", "") ?: "").split("\n").filter { it.isNotEmpty() }
+            val time = SimpleDateFormat("dd/MM HH:mm:ss", Locale.getDefault()).format(Date())
+            val lines = (old + "$time  $message").takeLast(14)
+            prefs.edit().putString("svc_log", lines.joinToString("\n")).commit()
+        } catch (e: Exception) {
+            // el registro nunca debe romper nada
+        }
+    }
+
+    fun readLog(prefs: SharedPreferences): String = prefs.getString("svc_log", "") ?: ""
 
     // ---------- Ejecutar acciones ----------
 

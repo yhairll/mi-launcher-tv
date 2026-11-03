@@ -235,6 +235,8 @@ class MainActivity : AppCompatActivity() {
             val title = if (serviceEnabled()) "Servicio de botones: ACTIVADO"
             else "1) ACTIVAR el servicio de botones"
             items.add(title to { openAccessibilitySettings() })
+            items.add("Ver estado del servicio" to { showServiceLog() })
+            items.add("Info de la app (ajustes restringidos)" to { openAppInfo() })
         }
         for ((label, action) in entries) {
             val mark = if (RemoteActions.isAssigned(prefs, action)) "   ✓ asignado" else ""
@@ -252,6 +254,34 @@ class MainActivity : AppCompatActivity() {
             .setTitle("Botones del control")
             .setItems(items.map { it.first }.toTypedArray()) { _, which -> items[which].second() }
             .show()
+    }
+
+    // Muestra que paso con el servicio (conectado, desconectado, errores) para saber por que se apaga.
+    private fun showServiceLog() {
+        val text = RemoteActions.readLog(prefs)
+        AlertDialog.Builder(this)
+            .setTitle("Estado del servicio")
+            .setMessage(
+                if (text.isBlank()) {
+                    "Sin registros: el sistema nunca llego a iniciar el servicio " +
+                        "(lo bloquea antes de encenderlo)."
+                } else {
+                    text
+                }
+            )
+            .setPositiveButton("Cerrar", null)
+            .setNeutralButton("Borrar") { _, _ -> prefs.edit().remove("svc_log").apply() }
+            .show()
+    }
+
+    private fun openAppInfo() {
+        try {
+            startActivity(
+                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName"))
+            )
+        } catch (e: Exception) {
+            Toast.makeText(this, "No pude abrir la info de la app", Toast.LENGTH_LONG).show()
+        }
     }
 
     // Avisa si falta activar el servicio antes de esperar el boton.
