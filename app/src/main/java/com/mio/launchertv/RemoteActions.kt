@@ -22,6 +22,13 @@ object RemoteActions {
     val NETFLIX = listOf("com.netflix.ninja")
     val YOUTUBE = listOf("com.google.android.youtube.tv")
     val PRIME = listOf("com.amazon.amazonvideo.livingroom")
+    val PLAY_STORE = listOf("com.android.vending")
+
+    // Administradores de archivos / USB (se usa el primero que este instalado).
+    val FILE_APPS = listOf(
+        "com.google.android.apps.nbu.files", "com.mediatek.filemanager",
+        "com.android.documentsui", "com.google.android.documentsui"
+    )
 
     // App de TV en vivo (para el boton de TV y de entradas del control).
     val TV_APPS = listOf(
@@ -76,6 +83,10 @@ object RemoteActions {
             .apply()
     }
 
+    // Esa accion ya tiene un boton asignado?
+    fun isAssigned(prefs: SharedPreferences, action: String): Boolean =
+        readMap(prefs).containsValue(action)
+
     fun clearAll(prefs: SharedPreferences) {
         prefs.edit().remove("remote_map").apply()
     }
@@ -120,6 +131,7 @@ object RemoteActions {
         when {
             action == "settings" -> start(ctx, Intent(Settings.ACTION_SETTINGS))
             action == "tv" -> openTv(ctx)
+            action == "usb" -> openUsb(ctx)
             action == "inputs" || action == "apps" ->
                 start(ctx, Intent(ctx, MainActivity::class.java).putExtra(EXTRA, action))
             action.startsWith("app:") -> {
@@ -146,6 +158,21 @@ object RemoteActions {
             }
         }
         start(ctx, Intent(Intent.ACTION_VIEW, TvContract.Channels.CONTENT_URI))
+    }
+
+    // Boton USB: abre el administrador de archivos; si no hay, el selector de archivos del sistema.
+    fun openUsb(ctx: Context) {
+        for (pkg in FILE_APPS) {
+            val intent = launchIntent(ctx, pkg)
+            if (intent != null) {
+                start(ctx, intent)
+                return
+            }
+        }
+        start(
+            ctx,
+            Intent(Intent.ACTION_OPEN_DOCUMENT).setType("*/*").addCategory(Intent.CATEGORY_OPENABLE)
+        )
     }
 
     fun launchIntent(ctx: Context, pkg: String): Intent? =

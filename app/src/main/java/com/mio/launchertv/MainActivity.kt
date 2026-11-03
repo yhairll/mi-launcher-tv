@@ -115,10 +115,6 @@ class MainActivity : AppCompatActivity() {
         // Tarjeta "Mejora tus recomendaciones": solo se puede seleccionar, no abre nada
         val card = findViewById<View>(R.id.recoCard)
         card.setOnClickListener { }
-        card.setOnFocusChangeListener { v, hasFocus ->
-            val scale = if (hasFocus) 1.02f else 1f
-            v.animate().scaleX(scale).scaleY(scale).setDuration(120).start()
-        }
 
         // El texto de Buscar y de las pestañas se pone NEGRO al seleccionarlos
         // (el fondo se vuelve blanco) y vuelve a su color al soltarlos.
@@ -227,34 +223,63 @@ class MainActivity : AppCompatActivity() {
             "Netflix" to RemoteActions.appAction(RemoteActions.NETFLIX),
             "YouTube" to RemoteActions.appAction(RemoteActions.YOUTUBE),
             "Prime Video" to RemoteActions.appAction(RemoteActions.PRIME),
-            "Todas las apps (boton rosado)" to "apps",
+            "Google Play" to RemoteActions.appAction(RemoteActions.PLAY_STORE),
+            "Apps (boton rosado)" to "apps",
             "Entradas" to "inputs",
             "TV en vivo" to "tv",
-            "Ajustes" to "settings"
+            "Ajustes" to "settings",
+            "USB (archivos)" to "usb"
         )
-        val offset = if (RemoteActions.SERVICE_AVAILABLE) 1 else 0
-        val labels = mutableListOf<String>()
+        val items = mutableListOf<Pair<String, () -> Unit>>()
         if (RemoteActions.SERVICE_AVAILABLE) {
-            labels.add(
-                if (serviceEnabled()) "Servicio de botones: ACTIVADO"
-                else "1) ACTIVAR el servicio de botones"
-            )
+            val title = if (serviceEnabled()) "Servicio de botones: ACTIVADO"
+            else "1) ACTIVAR el servicio de botones"
+            items.add(title to { openAccessibilitySettings() })
         }
-        for (entry in entries) labels.add("Asignar: ${entry.first}")
-        labels.add("Borrar todas las asignaciones")
+        for ((label, action) in entries) {
+            val mark = if (RemoteActions.isAssigned(prefs, action)) "   ✓ asignado" else ""
+            items.add("Boton $label$mark" to { requestLearn(label, action) })
+        }
+        items.add("Asignar un boton a otra app..." to { chooseAppToAssign() })
+        items.add(
+            "Borrar todas las asignaciones" to {
+                RemoteActions.clearAll(prefs)
+                Toast.makeText(this, "Asignaciones borradas", Toast.LENGTH_SHORT).show()
+            }
+        )
 
         AlertDialog.Builder(this)
             .setTitle("Botones del control")
-            .setItems(labels.toTypedArray()) { _, which ->
-                val index = which - offset
-                when {
-                    offset == 1 && which == 0 -> openAccessibilitySettings()
-                    index < entries.size -> learnButton(entries[index].first, entries[index].second)
-                    else -> {
-                        RemoteActions.clearAll(prefs)
-                        Toast.makeText(this, "Asignaciones borradas", Toast.LENGTH_SHORT).show()
-                    }
-                }
+            .setItems(items.map { it.first }.toTypedArray()) { _, which -> items[which].second() }
+            .show()
+    }
+
+    // Avisa si falta activar el servicio antes de esperar el boton.
+    private fun requestLearn(label: String, action: String) {
+        if (RemoteActions.SERVICE_AVAILABLE && !serviceEnabled()) {
+            AlertDialog.Builder(this)
+                .setTitle("Falta activar el servicio")
+                .setMessage(
+                    "Para que el launcher vea los botones del control, primero activa " +
+                        "\"Botones del control\" en Accesibilidad."
+                )
+                .setPositiveButton("Activar ahora") { _, _ -> openAccessibilitySettings() }
+                .setNegativeButton("Asignar igual") { _, _ -> learnButton(label, action) }
+                .show()
+        } else {
+            learnButton(label, action)
+        }
+    }
+
+    // Elige cualquier app instalada y luego el boton que la abrira.
+    private fun chooseAppToAssign() {
+        val apps = allApps()
+        val names = apps.map { it.loadLabel(packageManager).toString() }
+        AlertDialog.Builder(this)
+            .setTitle("¿Que app abrira el boton?")
+            .setItems(names.toTypedArray()) { _, which ->
+                val pkg = apps[which].activityInfo.packageName
+                requestLearn(names[which], RemoteActions.appAction(listOf(pkg)))
             }
             .show()
     }
