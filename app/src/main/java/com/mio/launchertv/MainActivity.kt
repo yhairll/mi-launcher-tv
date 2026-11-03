@@ -40,6 +40,9 @@ class MainActivity : AppCompatActivity() {
     private val playStore = listOf("com.android.vending")
 
 
+    // Cuantas apps se ven a la vez en "Mis apps" (el tamaño de cada una se ajusta solo).
+    private val homeColumns = 8
+
     // Estas salen primero; el resto va despues, en orden alfabetico.
     // Despues puedes moverlas tu con "Mover".
     private val favoritePackages =
@@ -62,8 +65,8 @@ class MainActivity : AppCompatActivity() {
     private var homeAdapter: AppsAdapter? = null
     private var movingPkg: String? = null
     private var rowStart = 0        // primera app visible de la fila de inicio
-    private var rowVisible = 6      // cuantas apps COMPLETAS caben en la fila
-    private var rowFitted = false
+    private var tileWidth = 0       // ancho de cada app en la fila de inicio (px)
+    private var tileHeight = 0
     private var consumedKey: String? = null
     private var pendingAction: String? = null
     private var isForeground = false
@@ -79,6 +82,14 @@ class MainActivity : AppCompatActivity() {
         appsRow = findViewById(R.id.appsRow)
         appsRow.layoutManager =
             LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
+        // La fila muestra exactamente "homeColumns" apps completas, repartidas a lo ancho.
+        val availPx = resources.displayMetrics.widthPixels - dp(80) - appsRow.paddingLeft
+        val slotPx = availPx / homeColumns
+        tileWidth = slotPx - dp(10)
+        tileHeight = tileWidth * 60 / 108
+        val rowParams = appsRow.layoutParams
+        rowParams.width = appsRow.paddingLeft + slotPx * homeColumns
+        appsRow.layoutParams = rowParams
         appName = findViewById(R.id.appName)
         heroGroup = findViewById(R.id.heroGroup)
         homeContent = findViewById(R.id.homeContent)
@@ -221,20 +232,24 @@ class MainActivity : AppCompatActivity() {
             "TV en vivo" to "tv",
             "Ajustes" to "settings"
         )
+        val offset = if (RemoteActions.SERVICE_AVAILABLE) 1 else 0
         val labels = mutableListOf<String>()
-        labels.add(
-            if (serviceEnabled()) "Servicio de botones: ACTIVADO"
-            else "1) ACTIVAR el servicio de botones"
-        )
+        if (RemoteActions.SERVICE_AVAILABLE) {
+            labels.add(
+                if (serviceEnabled()) "Servicio de botones: ACTIVADO"
+                else "1) ACTIVAR el servicio de botones"
+            )
+        }
         for (entry in entries) labels.add("Asignar: ${entry.first}")
         labels.add("Borrar todas las asignaciones")
 
         AlertDialog.Builder(this)
             .setTitle("Botones del control")
             .setItems(labels.toTypedArray()) { _, which ->
+                val index = which - offset
                 when {
-                    which == 0 -> openAccessibilitySettings()
-                    which <= entries.size -> learnButton(entries[which - 1].first, entries[which - 1].second)
+                    offset == 1 && which == 0 -> openAccessibilitySettings()
+                    index < entries.size -> learnButton(entries[index].first, entries[index].second)
                     else -> {
                         RemoteActions.clearAll(prefs)
                         Toast.makeText(this, "Asignaciones borradas", Toast.LENGTH_SHORT).show()
@@ -282,7 +297,8 @@ class MainActivity : AppCompatActivity() {
             .setTitle(label)
             .setMessage(
                 "Pulsa ahora el boton del control que quieres usar para esto.\n\n" +
-                    "Si no pasa nada, primero activa el servicio de botones.\n" +
+                    (if (RemoteActions.SERVICE_AVAILABLE) "Si no pasa nada, primero activa el servicio de botones.\n"
+                    else "Si no pasa nada, este TV no deja que el launcher vea ese boton.\n") +
                     "(Atras para cancelar)"
             )
             .setOnKeyListener { _, _, event -> RemoteActions.tryLearn(this, prefs, event) }
@@ -415,11 +431,10 @@ class MainActivity : AppCompatActivity() {
     private fun refreshHome() {
         movingPkg = null
         appName.text = ""
-        val adapter = AppsAdapter(homeApps())
+        val adapter = AppsAdapter(homeApps(), tileWidth, tileHeight)
         homeAdapter = adapter
         rowStart = 0
         appsRow.adapter = adapter
-        if (!rowFitted) fitRow()
     }
 
     private fun showApps() {
@@ -580,33 +595,12 @@ class MainActivity : AppCompatActivity() {
 
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
 
-    // Ajusta el ancho de la fila para que quepan SOLO apps completas:
-    // nunca queda una app cortada a la mitad en la esquina derecha.
-    private fun fitRow(attempt: Int = 0) {
-        appsRow.post {
-            val child = appsRow.getChildAt(0)
-            val parentWidth = (appsRow.parent as? View)?.width ?: 0
-            if (child == null || child.width == 0 || parentWidth == 0) {
-                if (attempt < 20 && (homeAdapter?.itemCount ?: 0) > 0) fitRow(attempt + 1)
-                return@post
-            }
-            val lp = child.layoutParams as ViewGroup.MarginLayoutParams
-            val slot = child.width + lp.leftMargin + lp.rightMargin
-            val n = maxOf(1, (parentWidth - appsRow.paddingLeft) / slot)
-            rowVisible = n
-            rowFitted = true
-            val params = appsRow.layoutParams
-            params.width = appsRow.paddingLeft + n * slot
-            appsRow.layoutParams = params
-        }
-    }
-
     // La fila se mueve "por paginas" de apps completas: la app enfocada siempre se ve entera,
     // y al llegar al borde la fila avanza una app para dejarla dentro.
     private fun alignWindow(pos: Int) {
         val count = homeAdapter?.itemCount ?: return
         if (pos < 0) return
-        val n = rowVisible
+        val n = homeColumns
         var start = rowStart
         if (pos < start) start = pos else if (pos > start + n - 1) start = pos - n + 1
         start = start.coerceIn(0, maxOf(0, count - n))
@@ -641,7 +635,11 @@ class MainActivity : AppCompatActivity() {
 
     // ---------- Adaptador de apps ----------
 
-    private inner class AppsAdapter(initial: List<ResolveInfo>) :
+    private inner class AppsAdapter(
+        initial: List<ResolveInfo>,
+        private val tileW: Int = 0,
+        private val tileH: Int = 0
+    ) :
         RecyclerView.Adapter<AppsAdapter.VH>() {
 
         private val items = initial.toMutableList()
@@ -660,8 +658,16 @@ class MainActivity : AppCompatActivity() {
             notifyItemMoved(from, to)
         }
 
-        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) =
-            VH(LayoutInflater.from(parent.context).inflate(R.layout.item_app, parent, false))
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
+            val view = LayoutInflater.from(parent.context).inflate(R.layout.item_app, parent, false)
+            if (tileW > 0) {
+                val lp = view.layoutParams
+                lp.width = tileW
+                lp.height = tileH
+                view.layoutParams = lp
+            }
+            return VH(view)
+        }
 
         override fun onBindViewHolder(holder: VH, position: Int) {
             val info = items[position]

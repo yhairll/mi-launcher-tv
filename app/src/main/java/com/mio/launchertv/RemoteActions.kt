@@ -14,6 +14,11 @@ object RemoteActions {
 
     const val EXTRA = "remote_action"
 
+    // true = la app incluye el servicio de accesibilidad "Botones del control".
+    // Google Play Protect puede bloquear la instalacion por usarlo; en ese caso se pone false
+    // y se quita el <service> del AndroidManifest.xml.
+    const val SERVICE_AVAILABLE = true
+
     val NETFLIX = listOf("com.netflix.ninja")
     val YOUTUBE = listOf("com.google.android.youtube.tv")
     val PRIME = listOf("com.amazon.amazonvideo.livingroom")
