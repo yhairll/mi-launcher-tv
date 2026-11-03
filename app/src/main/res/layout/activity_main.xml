@@ -63,6 +63,7 @@
                     android:src="@drawable/ic_assistant" />
 
                 <TextView
+                    android:id="@+id/searchLabel"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginStart="8dp"
@@ -91,6 +92,15 @@
                 android:layout_width="0dp"
                 android:layout_height="1dp"
                 android:layout_weight="1" />
+
+            <ImageView
+                android:id="@+id/iconInputs"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:padding="8dp"
+                android:focusable="true"
+                android:background="@drawable/icon_focus_bg"
+                android:src="@drawable/ic_input" />
 
             <ImageView
                 android:id="@+id/iconNotifications"
@@ -207,6 +217,58 @@
                 android:layout_height="16dp"
                 android:textColor="@color/text_primary"
                 android:textSize="11sp" />
+
+            <!-- Empuja la tarjeta hacia abajo -->
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1" />
+
+            <!-- Tarjeta "Mejora tus recomendaciones": se puede seleccionar, pero no abre nada -->
+            <LinearLayout
+                android:id="@+id/recoCard"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="26dp"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:focusable="true"
+                android:background="@drawable/reco_card_bg"
+                android:paddingStart="30dp"
+                android:paddingEnd="30dp"
+                android:paddingTop="18dp"
+                android:paddingBottom="18dp">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/reco_title"
+                        android:textColor="@color/text_primary"
+                        android:textSize="20sp" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:maxWidth="460dp"
+                        android:text="@string/reco_body"
+                        android:textColor="#B3FFFFFF"
+                        android:textSize="12sp" />
+                </LinearLayout>
+
+                <ImageView
+                    android:layout_width="220dp"
+                    android:layout_height="110dp"
+                    android:layout_marginStart="24dp"
+                    android:scaleType="fitCenter"
+                    android:src="@drawable/ic_reco_art" />
+            </LinearLayout>
         </LinearLayout>
 
         <!-- ===== PANTALLA "APPS" (todas las apps) ===== -->

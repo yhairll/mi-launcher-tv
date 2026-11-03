@@ -96,9 +96,24 @@ class MainActivity : AppCompatActivity() {
 
         // Barra superior
         click(R.id.search) { openAssistant() }
+        click(R.id.iconInputs) { showInputs() }
         click(R.id.iconNotifications) { openNotifications() }
         click(R.id.iconSettings) { startActivity(Intent(Settings.ACTION_SETTINGS)) }
         click(R.id.profile) { showRemoteSetup() }
+
+        // Tarjeta "Mejora tus recomendaciones": solo se puede seleccionar, no abre nada
+        val card = findViewById<View>(R.id.recoCard)
+        card.setOnClickListener { }
+        card.setOnFocusChangeListener { v, hasFocus ->
+            val scale = if (hasFocus) 1.02f else 1f
+            v.animate().scaleX(scale).scaleY(scale).setDuration(120).start()
+        }
+
+        // El texto de Buscar y de las pestañas se pone NEGRO al seleccionarlos
+        // (el fondo se vuelve blanco) y vuelve a su color al soltarlos.
+        for (id in listOf(R.id.search, R.id.tabHome, R.id.tabShop, R.id.tabApps)) {
+            findViewById<View>(id).setOnFocusChangeListener { _, _ -> refreshTextColors() }
+        }
 
         // Pestañas
         selectTab(findViewById(R.id.tabHome))
@@ -376,6 +391,25 @@ class MainActivity : AppCompatActivity() {
         selectedTab?.isSelected = false
         tab.isSelected = true
         selectedTab = tab
+        refreshTextColors()
+    }
+
+    private fun refreshTextColors() {
+        val black = 0xFF000000.toInt()
+        val white = 0xFFFFFFFF.toInt()
+        val soft = 0xB3FFFFFF.toInt()
+        for (id in listOf(R.id.tabHome, R.id.tabShop, R.id.tabApps)) {
+            val tab = findViewById<TextView>(id)
+            tab.setTextColor(
+                when {
+                    tab.isFocused -> black
+                    tab.isSelected -> white
+                    else -> soft
+                }
+            )
+        }
+        findViewById<TextView>(R.id.searchLabel)
+            .setTextColor(if (findViewById<View>(R.id.search).isFocused) black else soft)
     }
 
     private fun refreshHome() {

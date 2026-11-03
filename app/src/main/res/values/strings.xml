@@ -25,4 +25,7 @@
 
     <string name="remote_service_label">Botones del control</string>
     <string name="remote_service_description">Permite que los botones del control (Netflix, YouTube, Entradas, Ajustes...) funcionen con este launcher.</string>
+
+    <string name="reco_title">Mejora tus recomendaciones</string>
+    <string name="reco_body">Las películas, las series y los programas de TV que se recomiendan en Para ti proceden de tus servicios de streaming. Puedes consultar y modificar ahora tu lista de servicios.</string>
 </resources>
