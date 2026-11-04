@@ -70,6 +70,8 @@ class MainActivity : AppCompatActivity() {
     private var consumedKey: String? = null
     private var pendingAction: String? = null
     private var isForeground = false
+    private var pendingFocusHome = false
+    private val openDialogs = mutableListOf<AlertDialog>()
     private var learnDialog: AlertDialog? = null
     private var learnListener: SharedPreferences.OnSharedPreferenceChangeListener? = null
 
@@ -136,6 +138,10 @@ class MainActivity : AppCompatActivity() {
             Mode.HOME -> refreshHome()
             Mode.APPS -> showApps()
         }
+        if (pendingFocusHome && mode == Mode.HOME) {
+            pendingFocusHome = false
+            focusHomeItem(0)
+        }
         processPending()
     }
 
@@ -148,8 +154,45 @@ class MainActivity : AppCompatActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        // Tecla HOME del control: siempre vuelve al inicio, estes donde estes.
+        if (intent.hasCategory(Intent.CATEGORY_HOME) &&
+            intent.getStringExtra(RemoteActions.EXTRA) == null
+        ) {
+            goHome()
+            return
+        }
         pendingAction = intent.getStringExtra(RemoteActions.EXTRA)
         if (isForeground) processPending()
+    }
+
+    // Cierra menus, sale de "Apps" y deja el foco en la primera app de inicio.
+    private fun goHome() {
+        dismissAllDialogs()
+        movingPkg = null
+        showMode(Mode.HOME)
+        if (isForeground) {
+            pendingFocusHome = false
+            focusHomeItem(0)
+        } else {
+            pendingFocusHome = true
+        }
+    }
+
+    private fun dismissAllDialogs() {
+        for (dialog in openDialogs.toList()) {
+            if (dialog.isShowing) dialog.dismiss()
+        }
+        openDialogs.clear()
+    }
+
+    // Igual que AlertDialog.Builder, pero recuerda los menus abiertos para poder cerrarlos con HOME.
+    private inner class TrackedBuilder : AlertDialog.Builder(this@MainActivity) {
+        override fun show(): AlertDialog {
+            val dialog = super.show()
+            openDialogs.removeAll { !it.isShowing }
+            openDialogs.add(dialog)
+            return dialog
+        }
     }
 
     private fun processPending() {
@@ -250,7 +293,7 @@ class MainActivity : AppCompatActivity() {
             }
         )
 
-        AlertDialog.Builder(this)
+        TrackedBuilder()
             .setTitle("Botones del control")
             .setItems(items.map { it.first }.toTypedArray()) { _, which -> items[which].second() }
             .show()
@@ -259,7 +302,7 @@ class MainActivity : AppCompatActivity() {
     // Muestra que paso con el servicio (conectado, desconectado, errores) para saber por que se apaga.
     private fun showServiceLog() {
         val text = RemoteActions.readLog(prefs)
-        AlertDialog.Builder(this)
+        TrackedBuilder()
             .setTitle("Estado del servicio")
             .setMessage(
                 if (text.isBlank()) {
@@ -287,7 +330,7 @@ class MainActivity : AppCompatActivity() {
     // Avisa si falta activar el servicio antes de esperar el boton.
     private fun requestLearn(label: String, action: String) {
         if (RemoteActions.SERVICE_AVAILABLE && !serviceEnabled()) {
-            AlertDialog.Builder(this)
+            TrackedBuilder()
                 .setTitle("Falta activar el servicio")
                 .setMessage(
                     "Para que el launcher vea los botones del control, primero activa " +
@@ -305,7 +348,7 @@ class MainActivity : AppCompatActivity() {
     private fun chooseAppToAssign() {
         val apps = allApps()
         val names = apps.map { it.loadLabel(packageManager).toString() }
-        AlertDialog.Builder(this)
+        TrackedBuilder()
             .setTitle("¿Que app abrira el boton?")
             .setItems(names.toTypedArray()) { _, which ->
                 val pkg = apps[which].activityInfo.packageName
@@ -348,7 +391,7 @@ class MainActivity : AppCompatActivity() {
         learnListener = listener
         prefs.registerOnSharedPreferenceChangeListener(listener)
 
-        val dialog = AlertDialog.Builder(this)
+        val dialog = TrackedBuilder()
             .setTitle(label)
             .setMessage(
                 "Pulsa ahora el boton del control que quieres usar para esto.\n\n" +
@@ -365,6 +408,7 @@ class MainActivity : AppCompatActivity() {
             }
             .create()
         learnDialog = dialog
+        openDialogs.add(dialog)
         dialog.show()
     }
 
@@ -387,7 +431,7 @@ class MainActivity : AppCompatActivity() {
             // si no se pueden leer las entradas, queda solo "TV en vivo"
         }
 
-        AlertDialog.Builder(this)
+        TrackedBuilder()
             .setTitle("Entradas")
             .setItems(labels.toTypedArray()) { _, which ->
                 val id = ids[which]
@@ -553,7 +597,7 @@ class MainActivity : AppCompatActivity() {
             listOf("Ocultar de inicio", "Desinstalar")
         }
 
-        AlertDialog.Builder(this)
+        TrackedBuilder()
             .setTitle(info.loadLabel(packageManager).toString())
             .setItems(options.toTypedArray()) { _, which ->
                 when (options[which]) {

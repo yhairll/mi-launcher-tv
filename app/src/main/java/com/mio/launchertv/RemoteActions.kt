@@ -176,6 +176,28 @@ object RemoteActions {
                 return
             }
         }
+        // Si no es ninguna conocida, busca una app que se llame "TV", "Canales", etc.
+        val pm = ctx.packageManager
+        val names = setOf(
+            "tv", "live tv", "tv en vivo", "tv en directo", "canales", "live channels",
+            "television", "televisión"
+        )
+        val queries = listOf(
+            Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LEANBACK_LAUNCHER),
+            Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+        )
+        for (query in queries) {
+            for (info in pm.queryIntentActivities(query, 0)) {
+                val label = info.loadLabel(pm).toString().trim().lowercase()
+                if (label in names) {
+                    val intent = launchIntent(ctx, info.activityInfo.packageName)
+                    if (intent != null) {
+                        start(ctx, intent)
+                        return
+                    }
+                }
+            }
+        }
         start(ctx, Intent(Intent.ACTION_VIEW, TvContract.Channels.CONTENT_URI))
     }
 
