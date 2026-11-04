@@ -15,8 +15,6 @@
         tools:ignore="QueryAllPackagesPermission" />
 
 
-    <!-- Para abrir el panel de notificaciones del sistema -->
-    <uses-permission android:name="android.permission.EXPAND_STATUS_BAR" />
 
     <application
         android:label="@string/app_name"

@@ -1,5 +1,6 @@
 package com.mio.launchertv
 
+import android.app.Dialog
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -8,15 +9,20 @@ import android.content.pm.ApplicationInfo
 import android.content.pm.ResolveInfo
 import android.net.Uri
 import android.graphics.Rect
+import android.graphics.drawable.ColorDrawable
 import android.media.tv.TvContract
 import android.media.tv.TvInputManager
 import android.os.Bundle
 import android.provider.Settings
+import android.view.Gravity
 import android.view.KeyEvent
 import android.view.LayoutInflater
 import android.view.View
+import android.view.Window
+import android.view.WindowManager
 import android.view.ViewGroup
 import android.widget.ImageView
+import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
@@ -71,7 +77,7 @@ class MainActivity : AppCompatActivity() {
     private var pendingAction: String? = null
     private var isForeground = false
     private var pendingFocusHome = false
-    private val openDialogs = mutableListOf<AlertDialog>()
+    private val openDialogs = mutableListOf<Dialog>()
     private var learnDialog: AlertDialog? = null
     private var learnListener: SharedPreferences.OnSharedPreferenceChangeListener? = null
 
@@ -110,7 +116,7 @@ class MainActivity : AppCompatActivity() {
         // Barra superior
         click(R.id.search) { openAssistant() }
         click(R.id.iconInputs) { showInputs() }
-        click(R.id.iconNotifications) { openNotifications() }
+        click(R.id.iconNotifications) { showQuickPanel() }
         click(R.id.iconSettings) { startActivity(Intent(Settings.ACTION_SETTINGS)) }
         click(R.id.profile) { showRemoteSetup() }
 
@@ -466,19 +472,167 @@ class MainActivity : AppCompatActivity() {
         openPackage("com.google.android.katniss")
     }
 
-    // ---------- Notificaciones ----------
+    // ---------- Panel rapido (como el de Google TV) ----------
 
-    // Abre el panel de notificaciones del sistema (si el TV lo tiene).
-    private fun openNotifications() {
-        try {
-            val service = getSystemService("statusbar")
-            Class.forName("android.app.StatusBarManager")
-                .getMethod("expandNotificationsPanel")
-                .invoke(service)
-        } catch (e: Exception) {
-            Toast.makeText(this, "Este TV no tiene panel de notificaciones", Toast.LENGTH_SHORT)
-                .show()
+    private class QuickTile(
+        val icon: Int,
+        val title: String,
+        val subtitle: String?,
+        val action: () -> Unit
+    )
+
+    // Abre la primera pantalla de ajustes que exista; si ninguna, los ajustes generales.
+    private fun openSettingsScreen(vararg actions: String) {
+        for (action in actions) {
+            try {
+                startActivity(Intent(action))
+                return
+            } catch (e: Exception) {
+                // prueba la siguiente
+            }
         }
+        try {
+            startActivity(Intent(Settings.ACTION_SETTINGS))
+        } catch (e: Exception) {
+            Toast.makeText(this, "No pude abrir los ajustes", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun startScreensaver() {
+        try {
+            startActivity(
+                Intent(Intent.ACTION_MAIN)
+                    .setClassName("com.android.systemui", "com.android.systemui.Somnambulator")
+            )
+        } catch (e: Exception) {
+            openSettingsScreen(Settings.ACTION_DREAM_SETTINGS)
+        }
+    }
+
+    // Texto e icono oscuros cuando el mosaico esta seleccionado (fondo celeste), claros si no.
+    private fun bindQuickFocus(root: View, icon: ImageView?, title: TextView?, subtitle: TextView?) {
+        val light = 0xFFE8EAF0.toInt()
+        val dim = 0xFFAAB4C3.toInt()
+        val dark = 0xFF0B1B2B.toInt()
+        val darkDim = 0xFF3C4F63.toInt()
+        fun paint(focused: Boolean) {
+            title?.setTextColor(if (focused) dark else light)
+            subtitle?.setTextColor(if (focused) darkDim else dim)
+            icon?.setColorFilter(if (focused) dark else light)
+        }
+        paint(false)
+        root.setOnFocusChangeListener { _, hasFocus -> paint(hasFocus) }
+    }
+
+    // Panel lateral con Wi-Fi, Bluetooth, accesibilidad... Se abre con el icono de arriba.
+    private fun showQuickPanel() {
+        val dialog = Dialog(this)
+        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
+        val root = LayoutInflater.from(this).inflate(R.layout.panel_quick, null)
+        dialog.setContentView(root)
+
+        val tiles = listOf(
+            QuickTile(R.drawable.ic_qs_dream, "Protector de pantalla", null) { startScreensaver() },
+            QuickTile(R.drawable.ic_qs_wifi, "Wi-Fi", null) {
+                openSettingsScreen(Settings.ACTION_WIFI_SETTINGS)
+            },
+            QuickTile(R.drawable.ic_qs_home, "Google Home", null) {
+                if (installed(listOf("com.google.android.apps.chromecast.app")) != null) {
+                    openFirst(listOf("com.google.android.apps.chromecast.app"))
+                } else {
+                    Toast.makeText(this, "Google Home no esta instalado", Toast.LENGTH_SHORT).show()
+                }
+            },
+            QuickTile(R.drawable.ic_qs_bluetooth, "Bluetooth", null) {
+                openSettingsScreen(Settings.ACTION_BLUETOOTH_SETTINGS)
+            },
+            QuickTile(R.drawable.ic_qs_timer, "Temporizador", null) {
+                openSettingsScreen(Settings.ACTION_SETTINGS)
+            },
+            QuickTile(R.drawable.ic_qs_audio, "Salida de audio", null) {
+                openSettingsScreen("com.android.tv.action.VIEW_SOUND_SETTINGS", Settings.ACTION_SOUND_SETTINGS)
+            },
+            QuickTile(R.drawable.ic_qs_access, "Accesibilidad", null) {
+                openSettingsScreen(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+            }
+        )
+
+        val grid = root.findViewById<LinearLayout>(R.id.qsGrid)
+        var firstTile: View? = null
+        var i = 0
+        while (i < tiles.size) {
+            val row = LinearLayout(this)
+            row.orientation = LinearLayout.HORIZONTAL
+            val rowParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+            rowParams.bottomMargin = dp(10)
+            grid.addView(row, rowParams)
+
+            for (j in 0..1) {
+                val params = LinearLayout.LayoutParams(0, dp(66), 1f)
+                if (j == 0) params.rightMargin = dp(5) else params.leftMargin = dp(5)
+                val tile = tiles.getOrNull(i + j)
+                if (tile == null) {
+                    row.addView(View(this), params)
+                    continue
+                }
+                val view = LayoutInflater.from(this).inflate(R.layout.item_quick_tile, row, false)
+                val icon = view.findViewById<ImageView>(R.id.qsIcon)
+                val title = view.findViewById<TextView>(R.id.qsTitle)
+                val subtitle = view.findViewById<TextView>(R.id.qsSubtitle)
+                icon.setImageResource(tile.icon)
+                title.text = tile.title
+                if (tile.subtitle != null) {
+                    subtitle.text = tile.subtitle
+                    subtitle.visibility = View.VISIBLE
+                }
+                bindQuickFocus(view, icon, title, subtitle)
+                view.setOnClickListener {
+                    dialog.dismiss()
+                    tile.action()
+                }
+                row.addView(view, params)
+                if (firstTile == null) firstTile = view
+            }
+            i += 2
+        }
+
+        // Ajustes completos (engranaje de arriba)
+        val gear = root.findViewById<ImageView>(R.id.qsGear)
+        bindQuickFocus(gear, gear, null, null)
+        gear.setOnClickListener {
+            dialog.dismiss()
+            openSettingsScreen(Settings.ACTION_SETTINGS)
+        }
+
+        // Aviso de opciones para desarrolladores, solo si estan habilitadas
+        val dev = root.findViewById<View>(R.id.qsDev)
+        val devEnabled =
+            Settings.Global.getInt(contentResolver, Settings.Global.DEVELOPMENT_SETTINGS_ENABLED, 0) == 1
+        dev.visibility = if (devEnabled) View.VISIBLE else View.GONE
+        bindQuickFocus(
+            dev,
+            root.findViewById<ImageView>(R.id.qsDevIcon),
+            root.findViewById<TextView>(R.id.qsDevTitle),
+            root.findViewById<TextView>(R.id.qsDevSub)
+        )
+        dev.setOnClickListener {
+            dialog.dismiss()
+            openSettingsScreen(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)
+        }
+
+        val window = dialog.window
+        if (window != null) {
+            window.setBackgroundDrawable(ColorDrawable(0))
+            window.setGravity(Gravity.END)
+            window.setLayout(dp(400), ViewGroup.LayoutParams.MATCH_PARENT)
+            window.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+            window.setDimAmount(0.45f)
+        }
+        openDialogs.add(dialog)
+        dialog.setOnShowListener { firstTile?.requestFocus() }
+        dialog.show()
     }
 
     // ---------- Pantallas ----------
