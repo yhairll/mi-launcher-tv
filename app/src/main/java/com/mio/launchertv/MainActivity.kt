@@ -477,7 +477,7 @@ class MainActivity : AppCompatActivity() {
     private class QuickTile(
         val icon: Int,
         val title: String,
-        val subtitle: String?,
+        val art: Boolean = false,
         val action: () -> Unit
     )
 
@@ -509,12 +509,12 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // Texto e icono oscuros cuando el mosaico esta seleccionado (fondo celeste), claros si no.
+    // Texto e icono oscuros cuando el mosaico esta seleccionado (fondo blanco), blancos si no.
     private fun bindQuickFocus(root: View, icon: ImageView?, title: TextView?, subtitle: TextView?) {
-        val light = 0xFFE8EAF0.toInt()
-        val dim = 0xFFAAB4C3.toInt()
-        val dark = 0xFF0B1B2B.toInt()
-        val darkDim = 0xFF3C4F63.toInt()
+        val light = 0xFFFFFFFF.toInt()
+        val dim = 0xFFE3EBF2.toInt()
+        val dark = 0xFF12263A.toInt()
+        val darkDim = 0xFF4A5E72.toInt()
         fun paint(focused: Boolean) {
             title?.setTextColor(if (focused) dark else light)
             subtitle?.setTextColor(if (focused) darkDim else dim)
@@ -524,7 +524,7 @@ class MainActivity : AppCompatActivity() {
         root.setOnFocusChangeListener { _, hasFocus -> paint(hasFocus) }
     }
 
-    // Panel lateral con Wi-Fi, Bluetooth, accesibilidad... Se abre con el icono de arriba.
+    // Panel lateral como el de Google TV. Se abre con el icono de arriba.
     private fun showQuickPanel() {
         val dialog = Dialog(this)
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
@@ -532,27 +532,31 @@ class MainActivity : AppCompatActivity() {
         dialog.setContentView(root)
 
         val tiles = listOf(
-            QuickTile(R.drawable.ic_qs_dream, "Protector de pantalla", null) { startScreensaver() },
-            QuickTile(R.drawable.ic_qs_wifi, "Wi-Fi", null) {
+            QuickTile(R.drawable.ic_qs_dream, "Salvapantallas", true) { startScreensaver() },
+            QuickTile(R.drawable.ic_input, "Entradas") { showInputs() },
+            QuickTile(R.drawable.ic_qs_display, "Mostrar") {
+                openSettingsScreen("com.android.tv.action.VIEW_PICTURE_SETTINGS", Settings.ACTION_DISPLAY_SETTINGS)
+            },
+            QuickTile(R.drawable.ic_qs_sound, "Sonido") {
+                openSettingsScreen("com.android.tv.action.VIEW_SOUND_SETTINGS", Settings.ACTION_SOUND_SETTINGS)
+            },
+            QuickTile(R.drawable.ic_qs_wifi, "Wi-Fi") {
                 openSettingsScreen(Settings.ACTION_WIFI_SETTINGS)
             },
-            QuickTile(R.drawable.ic_qs_home, "Google Home", null) {
+            QuickTile(R.drawable.ic_qs_home, "Google Home") {
                 if (installed(listOf("com.google.android.apps.chromecast.app")) != null) {
                     openFirst(listOf("com.google.android.apps.chromecast.app"))
                 } else {
                     Toast.makeText(this, "Google Home no esta instalado", Toast.LENGTH_SHORT).show()
                 }
             },
-            QuickTile(R.drawable.ic_qs_bluetooth, "Bluetooth", null) {
+            QuickTile(R.drawable.ic_qs_bluetooth, "Bluetooth") {
                 openSettingsScreen(Settings.ACTION_BLUETOOTH_SETTINGS)
             },
-            QuickTile(R.drawable.ic_qs_timer, "Temporizador", null) {
+            QuickTile(R.drawable.ic_qs_timer, "Temporizador") {
                 openSettingsScreen(Settings.ACTION_SETTINGS)
             },
-            QuickTile(R.drawable.ic_qs_audio, "Salida de audio", null) {
-                openSettingsScreen("com.android.tv.action.VIEW_SOUND_SETTINGS", Settings.ACTION_SOUND_SETTINGS)
-            },
-            QuickTile(R.drawable.ic_qs_access, "Accesibilidad", null) {
+            QuickTile(R.drawable.ic_qs_access, "Accesibilidad") {
                 openSettingsScreen(Settings.ACTION_ACCESSIBILITY_SETTINGS)
             }
         )
@@ -570,24 +574,22 @@ class MainActivity : AppCompatActivity() {
             grid.addView(row, rowParams)
 
             for (j in 0..1) {
-                val params = LinearLayout.LayoutParams(0, dp(66), 1f)
+                val params = LinearLayout.LayoutParams(0, dp(60), 1f)
                 if (j == 0) params.rightMargin = dp(5) else params.leftMargin = dp(5)
                 val tile = tiles.getOrNull(i + j)
                 if (tile == null) {
                     row.addView(View(this), params)
                     continue
                 }
-                val view = LayoutInflater.from(this).inflate(R.layout.item_quick_tile, row, false)
-                val icon = view.findViewById<ImageView>(R.id.qsIcon)
+                val layout = if (tile.art) R.layout.item_quick_dream else R.layout.item_quick_tile
+                val view = LayoutInflater.from(this).inflate(layout, row, false)
                 val title = view.findViewById<TextView>(R.id.qsTitle)
-                val subtitle = view.findViewById<TextView>(R.id.qsSubtitle)
-                icon.setImageResource(tile.icon)
                 title.text = tile.title
-                if (tile.subtitle != null) {
-                    subtitle.text = tile.subtitle
-                    subtitle.visibility = View.VISIBLE
+                if (!tile.art) {
+                    val icon = view.findViewById<ImageView>(R.id.qsIcon)
+                    icon.setImageResource(tile.icon)
+                    bindQuickFocus(view, icon, title, null)
                 }
-                bindQuickFocus(view, icon, title, subtitle)
                 view.setOnClickListener {
                     dialog.dismiss()
                     tile.action()
@@ -626,9 +628,9 @@ class MainActivity : AppCompatActivity() {
         if (window != null) {
             window.setBackgroundDrawable(ColorDrawable(0))
             window.setGravity(Gravity.END)
-            window.setLayout(dp(400), ViewGroup.LayoutParams.MATCH_PARENT)
+            window.setLayout(dp(340), ViewGroup.LayoutParams.MATCH_PARENT)
             window.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
-            window.setDimAmount(0.45f)
+            window.setDimAmount(0.35f)
         }
         openDialogs.add(dialog)
         dialog.setOnShowListener { firstTile?.requestFocus() }
